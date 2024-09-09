@@ -30,7 +30,7 @@
 1. Склонируйте репозиторий с задачами.
 
 	```
-	git clone https://gitlab.manytask.org/rust-ysda/public-2023-fall.git shad-rust
+	git clone https://gitlab.manytask.org/rust-ysda/public-2024-fall.git shad-rust
 	```
 
    Команда `git clone` создаст директорию `shad-rust` и запишет туда все файлы из этого репозитория.
