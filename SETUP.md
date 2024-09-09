@@ -1,9 +1,9 @@
 ## Настройка окружения
 
-Инструкция приведена для Ubuntu 23.04. Тем не менее, настройка под Mac OS и Windows будет мало
+Инструкция приведена для Ubuntu 24.04. Тем не менее, настройка под Mac OS и Windows будет мало
 отличаться (под Windows вам, вероятно, понадобится WSL или Cygwin). В теории курс
 кросс-платформенный - все задачи можно делать на Linux, Mac и Windows - однако
-мы тестировали только под Ubuntu 23.04, так что на других платформах следует ожидать непредвиденных проблем.
+мы тестировали только под Ubuntu 24.04, так что на других платформах следует ожидать непредвиденных проблем.
 В случае их возникновения, пишите в чат курса - чем сможем, поможем :)
 
 ### Регистрация в системе
@@ -21,7 +21,7 @@
 	```
 	$ ssh git@gitlab.manytask.org
 	PTY allocation request failed on channel 0
-	Welcome to GitLab, Fedor Korotkiy!
+	Welcome to GitLab, Miron Fedorov!
 	Connection to gitlab.manytask.org closed.
 	```
 
@@ -44,8 +44,8 @@
 1. Для отправки решения на сервер, необходимо, чтобы у вас были заданы имя и email в git:
 
 	```
-	git config --global user.name "Vasya Pupkin"
-	git config --global user.email vasya@pupkin.ru
+	git config --global user.name "Miron Fedorov"
+	git config --global user.email miron@fedorov.ru
 	```
 
 1. Откройте страницу своего репозитория в браузере: для этого нужно перейти по ссылке MY REPO на [странице с задачами](https://rust.manytask.org).
@@ -87,7 +87,7 @@
 
 1. Отправьте своё решение на сервер командой `make submit`. Ваш сабмит должен появиться по ссылке "SUBMITS" на [rust.manytask.org](https://rust.manytask.org).
 После успешного прохождения тестов вам должно начислиться 0 баллов в
-[таблице с баллами](https://docs.google.com/spreadsheets/d/1qetwX5q3fMc8Lw0LNwluWdsHBNX6jcJ8vUdMYQ05EoU).
+[таблице с баллами](https://docs.google.com/spreadsheets/d/1BZEivXenFrBONNpQqpeGxbc2kIXX_F-02Z7QolADsXE/edit).
 	* Если `make submit` падает с ошибкой сборки `openssl-sys`, значит, у вас не установлены заголовки libssl.
 	  На Ubuntu поставить их можно командой `sudo apt install libssl-dev`.
 
