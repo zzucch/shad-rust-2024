@@ -1,4 +1,7 @@
-use xtask::submit::{submit, SubmitArgs};
+use xtask::{
+    check::{check, CheckArgs},
+    submit::{submit, SubmitArgs},
+};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -15,6 +18,7 @@ struct Args {
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
     Submit(SubmitArgs),
+    Check(CheckArgs),
 }
 
 fn main() -> Result<()> {
@@ -22,5 +26,6 @@ fn main() -> Result<()> {
 
     match args.cmd {
         Command::Submit(args) => submit(args),
+        Command::Check(args) => check(args),
     }
 }
