@@ -1,9 +1,10 @@
 [workspace]
 members = [
     # Tasks
+    "xtask",
     "add",
 
     # Tools
-    "tools/submit",
+    "",
 ]
 resolver = "2"
