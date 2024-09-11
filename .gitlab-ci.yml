@@ -5,7 +5,6 @@ grade:
   script:
     - if [[ "$CI_COMMIT_REF_NAME" == submit/* ]]; then
         cd /opt/shad/rust && cargo xtask grade
-          --
           --student-repo $CI_PROJECT_DIR
           --original-repo .
           --ci-branch-name $CI_COMMIT_REF_NAME
