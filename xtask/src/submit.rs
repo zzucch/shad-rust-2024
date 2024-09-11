@@ -1,13 +1,15 @@
-use anyhow::{bail, Context, Result};
+use crate::util::canonicalize;
+
+use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;
 use git2::{Repository, RepositoryOpenFlags, StatusOptions};
+use xshell::{cmd, Shell};
 
 use std::{
     env,
     ffi::OsStr,
-    fs, iter,
+    iter,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,18 +21,10 @@ const REMOTE_NAME: &str = "student";
 
 #[derive(Parser, Clone, Debug)]
 pub struct SubmitArgs {
-    #[arg(short, long, help = "Path to the task dir (defaults to CWD).")]
     pub task_path: Option<PathBuf>,
-
-    #[arg(help = "Subtask name")]
-    pub subtask_name: Option<String>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-fn is_valid_task_path(path: &Path) -> bool {
-    path.join(".grade.yml").exists()
-}
 
 fn uncommitted_changes(repo: &Repository, task_name: &str) -> Result<Vec<PathBuf>> {
     let statuses = repo
@@ -80,53 +74,35 @@ fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
     Ok(tail.trim_end_matches(".git").to_string())
 }
 
-fn push_task(
-    path: &Path,
-    task_name: &str,
-    remote_name: &str,
-    subtask_name: Option<&str>,
-) -> Result<()> {
-    // NB: push using git as a subcommand is way less tedious than using libgit2.
-    let branch_name = match subtask_name {
-        Some(subtask) => format!("submit/{}@{}", subtask, task_name),
-        None => format!("submit/{}", task_name),
-    };
-    let status = Command::new("git")
-        .args(&[
-            "push",
-            "--force",
-            remote_name,
-            &format!("HEAD:{}", branch_name),
-        ])
-        .current_dir(path)
-        .spawn()
-        .context("failed to call 'git'")?
-        .wait()
-        .context("failed to wait for 'git'")?;
-    if !status.success() {
-        bail!("'git push' failed");
-    }
+fn push_task(path: &Path, task_name: &str, remote_name: &str) -> Result<()> {
+    // NB: push using git cli is way less tedious than using libgit2.
+    let shell = Shell::new().context("failed to create shell")?;
+    shell.change_dir(path);
+    cmd!(
+        shell,
+        "git push --force {remote_name} HEAD:submit/{task_name}"
+    )
+    .run()?;
+
     Ok(())
 }
 
 pub fn submit(args: SubmitArgs) -> Result<()> {
-    let rel_task_path = args
-        .task_path
-        .unwrap_or(env::current_dir().context("failed to get cwd")?);
-    let task_path = fs::canonicalize(rel_task_path).context("failed to canonicalize task path")?;
-    if !is_valid_task_path(&task_path) {
-        bail!(
-            "this doesn't look like a valid task directory: {}",
-            task_path.display()
-        );
-    }
+    let task_path = canonicalize(
+        args.task_path
+            .unwrap_or(env::current_dir().context("failed to get cwd")?),
+    )?;
 
-    let task_name = fs::canonicalize(&task_path)
-        .context("failed to canonicalize path")?
+    ensure!(
+        task_path.join(".grade.yml").exists(),
+        "not a task directory: {}",
+        task_path.display(),
+    );
+
+    let task_name = canonicalize(&task_path)?
         .file_name()
-        .context("failed to get file name")?
-        .to_str()
-        .context("task name is not a str")?
+        .and_then(OsStr::to_str)
+        .with_context(|| format!("invalid task path: {}", task_path.display()))?
         .to_owned();
 
     let repo = Repository::open_ext(
@@ -151,13 +127,7 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
 
     let student_login = get_student_login(&repo, REMOTE_NAME)?;
 
-    push_task(
-        &task_path,
-        &task_name,
-        REMOTE_NAME,
-        args.subtask_name.as_deref(),
-    )
-    .context("failed to push task")?;
+    push_task(&task_path, &task_name, REMOTE_NAME).context("failed to push task")?;
 
     eprintln!("\nOK: task is successfully submitted.");
     eprintln!("-> {}/{}/pipelines", STUDENTS_GROUP_URL, student_login);
