@@ -99,7 +99,7 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
         task_path.display(),
     );
 
-    let task_name = canonicalize(&task_path)?
+    let task_name = task_path
         .file_name()
         .and_then(OsStr::to_str)
         .with_context(|| format!("invalid task path: {}", task_path.display()))?
@@ -114,16 +114,16 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
 
     let uncommitted_files = uncommitted_changes(&repo, &task_name)
         .context("failed to check for uncommitted changes")?;
-    if !uncommitted_files.is_empty() {
-        bail!(
-            "there are uncommitted changes:\n{}\nPlease either commit or stash them.",
-            uncommitted_files
-                .iter()
-                .map(|p| format!(" * {}", p.display()))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        );
-    }
+
+    ensure!(
+        uncommitted_files.is_empty(),
+        "there are uncommitted changes:\n{}\nPlease either commit or stash them.",
+        uncommitted_files
+            .iter()
+            .map(|p| format!(" * {}", p.display()))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
 
     let student_login = get_student_login(&repo, REMOTE_NAME)?;
 
