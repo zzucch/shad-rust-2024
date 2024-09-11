@@ -17,15 +17,15 @@ struct Args {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
-    Submit(SubmitArgs),
     Check(CheckArgs),
+    Submit(SubmitArgs),
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.cmd {
-        Command::Submit(args) => submit(args),
         Command::Check(args) => check(args),
+        Command::Submit(args) => submit(args),
     }
 }

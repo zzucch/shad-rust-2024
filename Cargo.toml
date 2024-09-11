@@ -1,10 +1,6 @@
 [workspace]
 members = [
-    # Tasks
+    "task/add",
     "xtask",
-    "add",
-
-    # Tools
-    "",
 ]
 resolver = "2"

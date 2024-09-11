@@ -19,7 +19,7 @@ const REMOTE_NAME: &str = "student";
 
 #[derive(Parser, Clone, Debug)]
 pub struct SubmitArgs {
-    #[arg(short, long, help = "Path to the task dir (defaults to CWD)")]
+    #[arg(short, long, help = "Path to the task dir (defaults to CWD).")]
     pub task_path: Option<PathBuf>,
 
     #[arg(help = "Subtask name")]

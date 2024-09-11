@@ -5,3 +5,6 @@
 **/vendor
 
 **/*.pyc
+
+# Updating Cargo.lock may conflict with student commits.
+Cargo.lock

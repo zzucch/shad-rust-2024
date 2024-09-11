@@ -1,11 +1,12 @@
+use crate::util::{canonicalize, read_config};
+
 use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;
 use serde::Deserialize;
 use xshell::{cmd, Shell};
 
 use std::{
-    env, fs,
-    io::Read,
+    env,
     path::{Path, PathBuf},
 };
 
@@ -17,8 +18,7 @@ const CONFIG_FILE_NAME: &str = ".check.yml";
 
 #[derive(Parser, Clone, Debug)]
 pub struct CheckArgs {
-    #[arg(short, long, help = "Path to the task dir (defaults to CWD)")]
-    pub task_path: Option<PathBuf>,
+    pub task_path: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -61,16 +61,6 @@ struct TestConfig {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-fn read_config(path: &Path) -> Result<Config> {
-    let mut file = fs::File::open(path).context(format!("failed to open {}", path.display()))?;
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
-        .context(format!("failed to read {}", path.display()))?;
-
-    serde_yaml::from_slice(&buffer).context("failed to parse config")
-}
 
 fn run_lints(shell: &Shell, config: LintConfig) -> Result<()> {
     if config.fmt {
@@ -120,27 +110,44 @@ fn run_tests(shell: &Shell, config: TestConfig) -> Result<()> {
 }
 
 fn ensure_grader_config_exists(task_path: &Path) -> Result<()> {
-    let path = task_path.join(".allowlist");
+    let path = task_path.join(".grade.yml");
     ensure!(path.exists(), "file not found: {}", path.display());
     Ok(())
 }
 
-pub fn check(args: CheckArgs) -> Result<()> {
-    let rel_task_path = args
-        .task_path
-        .unwrap_or(env::current_dir().context("failed to get cwd")?);
-    let task_path = fs::canonicalize(rel_task_path).context("failed to canonicalize task path")?;
-
-    let config = read_config(&task_path.join(CONFIG_FILE_NAME)).context("failed to read config")?;
+fn check_task(path: &Path) -> Result<()> {
+    let config =
+        read_config::<Config>(path.join(CONFIG_FILE_NAME)).context("failed to read config")?;
 
     let shell = Shell::new().context("failed to create shell")?;
-    shell.change_dir(&task_path);
+    shell.change_dir(path);
 
     run_lints(&shell, config.lint).context("lints failed")?;
     run_build(&shell, config.build).context("build failed")?;
     run_tests(&shell, config.test).context("tests failed")?;
 
-    ensure_grader_config_exists(&task_path)?;
+    ensure_grader_config_exists(path)
+}
+
+pub fn check(args: CheckArgs) -> Result<()> {
+    let task_paths = if args.task_path.is_empty() {
+        vec![env::current_dir().context("failed to get cwd")?]
+    } else {
+        args.task_path
+    }
+    .into_iter()
+    .map(canonicalize)
+    .collect::<Result<Vec<_>>>()?;
+
+    for task_path in task_paths {
+        let task_name = task_path
+            .file_name()
+            .map(|t| t.to_string_lossy().into_owned())
+            .with_context(|| format!("invalid task path: {}", task_path.display()))?;
+
+        eprintln!("Checking task '{}' at {}", task_name, task_path.display());
+        check_task(&task_path).with_context(|| format!("task '{}' check failed", task_name))?;
+    }
 
     eprintln!("OK!");
     Ok(())
