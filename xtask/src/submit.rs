@@ -29,7 +29,7 @@ pub struct SubmitArgs {
 ////////////////////////////////////////////////////////////////////////////////
 
 fn is_valid_task_path(path: &Path) -> bool {
-    path.join(".allowlist").exists()
+    path.join(".grade.yml").exists()
 }
 
 fn uncommitted_changes(repo: &Repository, task_name: &str) -> Result<Vec<PathBuf>> {
