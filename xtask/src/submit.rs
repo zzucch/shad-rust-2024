@@ -14,8 +14,8 @@ use std::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const STUDENTS_GROUP_URL: &str = "https://gitlab.manytask.org/rust-ysda-students-2024-fall";
-const REMOTE_NAME: &str = "student";
+const STUDENT_GROUP_URL: &str = "https://gitlab.manytask.org/rust-ysda-students-2024-fall";
+const STUDENT_REMOTE_NAME: &str = "student";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -59,7 +59,7 @@ fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
             if err.code() == git2::ErrorCode::NotFound {
                 bail!(
                     "remote '{}' does not exist. Please create it according to the course tutorial.",
-                    REMOTE_NAME
+                    STUDENT_REMOTE_NAME
                 );
             } else {
                 bail!("failed to find remote '{}': {}", remote, err);
@@ -74,15 +74,28 @@ fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
     Ok(tail.trim_end_matches(".git").to_string())
 }
 
-fn push_task(path: &Path, task_name: &str, remote_name: &str) -> Result<()> {
-    // NB: push using git cli is way less tedious than using libgit2.
+fn push_task(path: &Path, branch: &str) -> Result<()> {
+    // NB: pushing using libgit2 would require dealing with user authentication,
+    // which is very difficult to get right.
+    // So we give up and use git cli.
     let shell = Shell::new().context("failed to create shell")?;
     shell.change_dir(path);
-    cmd!(
+
+    let output = cmd!(
         shell,
-        "git push --force {remote_name} HEAD:submit/{task_name}"
+        "git push --force {STUDENT_REMOTE_NAME} HEAD:{branch}"
     )
-    .run()?;
+    .ignore_status()
+    .output()?;
+
+    if !output.status.success() {
+        eprintln!(
+            "{}",
+            std::str::from_utf8(&output.stderr)
+                .context("'git push' stderr is not a valid utf-8")?
+        );
+        bail!("failed to push to branch '{branch}'");
+    }
 
     Ok(())
 }
@@ -125,11 +138,13 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
             .join("\n"),
     );
 
-    let student_login = get_student_login(&repo, REMOTE_NAME)?;
+    let student_login = get_student_login(&repo, STUDENT_REMOTE_NAME)?;
 
-    push_task(&task_path, &task_name, REMOTE_NAME).context("failed to push task")?;
+    eprintln!("Submitting '{task_name}' ...");
+    push_task(&task_path, "main")?;
+    push_task(&task_path, &format!("submit/{task_name}"))?;
 
-    eprintln!("\nOK: task is successfully submitted.");
-    eprintln!("-> {}/{}/pipelines", STUDENTS_GROUP_URL, student_login);
+    eprintln!("OK: task is successfully submitted.");
+    eprintln!("-> {STUDENT_GROUP_URL}/{student_login}/pipelines");
     Ok(())
 }
