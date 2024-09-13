@@ -107,7 +107,7 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
     )?;
 
     ensure!(
-        task_path.join(".grade.yml").exists(),
+        task_path.join(".grade.toml").exists(),
         "not a task directory: {}",
         task_path.display(),
     );

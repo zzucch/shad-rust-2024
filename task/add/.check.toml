@@ -1,0 +1,7 @@
+[lint]
+fmt = true
+clippy = true
+
+[test]
+debug = true
+release = true

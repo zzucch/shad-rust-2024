@@ -36,9 +36,9 @@ where
     let mut file =
         std::fs::File::open(path).context(format!("failed to open {}", path.display()))?;
 
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)
         .context(format!("failed to read {}", path.display()))?;
 
-    serde_yaml::from_slice(&buffer).context("failed to parse config")
+    toml::from_str(&buffer).context("failed to parse config")
 }

@@ -12,7 +12,7 @@ use std::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const CONFIG_FILE_NAME: &str = ".check.yml";
+const CONFIG_FILE_NAME: &str = ".check.toml";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -110,7 +110,7 @@ fn run_tests(shell: &Shell, config: TestConfig) -> Result<()> {
 }
 
 fn ensure_grader_config_exists(task_path: &Path) -> Result<()> {
-    let path = task_path.join(".grade.yml");
+    let path = task_path.join(".grade.toml");
     ensure!(path.exists(), "file not found: {}", path.display());
     Ok(())
 }
