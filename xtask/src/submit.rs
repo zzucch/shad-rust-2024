@@ -22,6 +22,9 @@ const STUDENT_REMOTE_NAME: &str = "student";
 #[derive(Parser, Clone, Debug)]
 pub struct SubmitArgs {
     pub task_path: Option<PathBuf>,
+
+    #[arg(short, long, action)]
+    pub verbose: bool,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,27 +77,28 @@ fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
     Ok(tail.trim_end_matches(".git").to_string())
 }
 
-fn push_task(path: &Path, branch: &str) -> Result<()> {
+fn push_task(path: &Path, branch: &str, verbose: bool) -> Result<()> {
     // NB: pushing using libgit2 would require dealing with user authentication,
     // which is very difficult to get right.
     // So we give up and use git cli.
     let shell = Shell::new().context("failed to create shell")?;
     shell.change_dir(path);
 
-    let output = cmd!(
+    let cmd = cmd!(
         shell,
         "git push --force {STUDENT_REMOTE_NAME} HEAD:{branch}"
-    )
-    .ignore_status()
-    .output()?;
+    );
 
+    if verbose {
+        return cmd
+            .run()
+            .with_context(|| format!("failed to push to branch \"{branch}\""));
+    }
+
+    let output = cmd.ignore_status().output()?;
     if !output.status.success() {
-        eprintln!(
-            "{}",
-            std::str::from_utf8(&output.stderr)
-                .context("'git push' stderr is not a valid utf-8")?
-        );
-        bail!("failed to push to branch '{branch}'");
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+        bail!("failed to push to branch \"{branch}\"");
     }
 
     Ok(())
@@ -108,14 +112,13 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
 
     ensure!(
         task_path.join(".grade.toml").exists(),
-        "not a task directory: {}",
-        task_path.display(),
+        "not a task directory: {task_path:?}",
     );
 
     let task_name = task_path
         .file_name()
         .and_then(OsStr::to_str)
-        .with_context(|| format!("invalid task path: {}", task_path.display()))?
+        .with_context(|| format!("invalid task path: {task_path:?}"))?
         .to_owned();
 
     let repo = Repository::open_ext(
@@ -140,9 +143,9 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
 
     let student_login = get_student_login(&repo, STUDENT_REMOTE_NAME)?;
 
-    eprintln!("Submitting '{task_name}' ...");
-    push_task(&task_path, "main")?;
-    push_task(&task_path, &format!("submit/{task_name}"))?;
+    eprintln!("Submitting \"{task_name}\" ...");
+    push_task(&task_path, "main", args.verbose)?;
+    push_task(&task_path, &format!("submit/{task_name}"), args.verbose)?;
 
     eprintln!("OK: task is successfully submitted.");
     eprintln!("-> {STUDENT_GROUP_URL}/{student_login}/pipelines");

@@ -111,7 +111,7 @@ fn run_tests(shell: &Shell, config: TestConfig) -> Result<()> {
 
 fn ensure_grader_config_exists(task_path: &Path) -> Result<()> {
     let path = task_path.join(".grade.toml");
-    ensure!(path.exists(), "file not found: {}", path.display());
+    ensure!(path.exists(), "file not found: {path:?}");
     Ok(())
 }
 
@@ -143,10 +143,10 @@ pub fn check(args: CheckArgs) -> Result<()> {
         let task_name = task_path
             .file_name()
             .map(|t| t.to_string_lossy().into_owned())
-            .with_context(|| format!("invalid task path: {}", task_path.display()))?;
+            .with_context(|| format!("invalid task path: {task_path:?}"))?;
 
-        eprintln!("Checking task '{}' at {}", task_name, task_path.display());
-        check_task(&task_path).with_context(|| format!("task '{}' check failed", task_name))?;
+        eprintln!("Checking task \"{task_name}\" at {task_path:?}");
+        check_task(&task_path).with_context(|| format!("task \"{task_name}\" check failed"))?;
     }
 
     eprintln!("OK!");

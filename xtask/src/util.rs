@@ -11,8 +11,8 @@ use std::{
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf> {
-    std::fs::canonicalize(path.as_ref())
-        .with_context(|| format!("failed to canonicalize path {}", path.as_ref().display()))
+    let path = path.as_ref();
+    std::fs::canonicalize(path).with_context(|| format!("failed to canonicalize path {path:?}"))
 }
 
 pub fn get_cwd_repo_path() -> Result<PathBuf> {
@@ -33,12 +33,11 @@ where
     for<'a> T: Deserialize<'a>,
 {
     let path = path.as_ref();
-    let mut file =
-        std::fs::File::open(path).context(format!("failed to open {}", path.display()))?;
+    let mut file = std::fs::File::open(path).with_context(|| format!("failed to open {path:?}"))?;
 
     let mut buffer = String::new();
     file.read_to_string(&mut buffer)
-        .context(format!("failed to read {}", path.display()))?;
+        .with_context(|| format!("failed to read {path:?}"))?;
 
     toml::from_str(&buffer).context("failed to parse config")
 }
