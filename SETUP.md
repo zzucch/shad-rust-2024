@@ -48,7 +48,7 @@
 	git config --global user.email miron@fedorov.ru
 	```
 
-1. Откройте страницу своего репозитория в браузере: для этого нужно перейти по ссылке MY REPO на [странице с задачами](https://rust.manytask.org).
+1. Откройте страницу своего репозитория в браузере: для этого нужно перейти по ссылке `My Repo` на [странице с задачами](https://rust.manytask.org).
 1. Скопируйте ссылку, которая появляется при нажатии синей кнопки Clone -> Clone with SSH.
 1. Запустите из директории репозитория команду:
 
@@ -85,8 +85,8 @@
 	git commit -m 'Solve task: add'  # сообщение может быть произвольным
     ```
 
-1. Отправьте своё решение на сервер командой `cargo xtask submit`. Ваш сабмит должен появиться по ссылке "SUBMITS" на [rust.manytask.org](https://rust.manytask.org).
-После успешного прохождения тестов вам должно начислиться 0 баллов в
+1. Отправьте своё решение на сервер командой `cargo xtask submit`. Ваш сабмит должен появиться по ссылке `My Submits` на [rust.manytask.org](https://rust.manytask.org).
+После успешного прохождения тестов вам должно начислиться 1 балл в
 [таблице с баллами](https://docs.google.com/spreadsheets/d/1BZEivXenFrBONNpQqpeGxbc2kIXX_F-02Z7QolADsXE/edit).
 	* Если `submit` падает с ошибкой сборки `openssl-sys`, значит, у вас не установлены заголовки libssl.
 	  На Ubuntu поставить их можно командой `sudo apt install libssl-dev`.
