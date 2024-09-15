@@ -115,12 +115,12 @@ fn check_task(path: &Path) -> Result<()> {
     let config =
         read_config::<Config>(path.join(CONFIG_FILE_NAME)).context("failed to read config")?;
 
-    let shell = Shell::new().context("failed to create shell")?;
-    shell.change_dir(path);
+    let sh = Shell::new().context("failed to create shell")?;
+    sh.change_dir(path);
 
-    run_lints(&shell, config.lint).context("lints failed")?;
-    run_build(&shell, config.build).context("build failed")?;
-    run_tests(&shell, config.test).context("tests failed")?;
+    run_lints(&sh, config.lint)?;
+    run_build(&sh, config.build)?;
+    run_tests(&sh, config.test)?;
 
     ensure_grader_config_exists(path)
 }
@@ -142,7 +142,7 @@ pub fn check(args: CheckArgs) -> Result<()> {
             .with_context(|| format!("invalid task path: {task_path:?}"))?;
 
         eprintln!("Checking task \"{task_name}\" at {task_path:?}");
-        check_task(&task_path).with_context(|| format!("failed to check task \"{task_name}\""))?;
+        check_task(&task_path)?;
     }
 
     eprintln!("OK!");

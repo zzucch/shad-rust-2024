@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "task/add",
-    "xtask",
+    "task/comm",
+    "task/comm/xtask",
+    "task/perc",
+    "xtask/base",
+    "xtask/util",
 ]
 resolver = "2"
