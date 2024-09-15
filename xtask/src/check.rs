@@ -62,9 +62,9 @@ struct TestConfig {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-fn run_lints(shell: &Shell, config: LintConfig) -> Result<()> {
+fn run_lints(sh: &Shell, config: LintConfig) -> Result<()> {
     if config.fmt {
-        cmd!(shell, "cargo fmt -- --check").run()?;
+        cmd!(sh, "cargo fmt -- --check").run()?;
     }
 
     if config.clippy {
@@ -73,11 +73,7 @@ fn run_lints(shell: &Shell, config: LintConfig) -> Result<()> {
         } else {
             &["--deny", "unsafe_code"]
         };
-        cmd!(
-            shell,
-            "cargo clippy -- --deny warnings {deny_unsafe_code...}"
-        )
-        .run()?;
+        cmd!(sh, "cargo clippy -- --deny warnings {deny_unsafe_code...}").run()?;
     } else if !config.allow_unsafe {
         bail!("`lint.allow_unsafe` cannot be false with `lint.clippy` disabled");
     }
@@ -85,25 +81,25 @@ fn run_lints(shell: &Shell, config: LintConfig) -> Result<()> {
     Ok(())
 }
 
-fn run_build(shell: &Shell, config: BuildConfig) -> Result<()> {
+fn run_build(sh: &Shell, config: BuildConfig) -> Result<()> {
     if config.debug {
-        cmd!(shell, "cargo build").run()?;
+        cmd!(sh, "cargo build").run()?;
     }
 
     if config.release {
-        cmd!(shell, "cargo build --release").run()?;
+        cmd!(sh, "cargo build --release").run()?;
     }
 
     Ok(())
 }
 
-fn run_tests(shell: &Shell, config: TestConfig) -> Result<()> {
+fn run_tests(sh: &Shell, config: TestConfig) -> Result<()> {
     if config.debug {
-        cmd!(shell, "cargo test").run()?;
+        cmd!(sh, "cargo test").run()?;
     }
 
     if config.release {
-        cmd!(shell, "cargo test --release").run()?;
+        cmd!(sh, "cargo test --release").run()?;
     }
 
     Ok(())
@@ -146,7 +142,7 @@ pub fn check(args: CheckArgs) -> Result<()> {
             .with_context(|| format!("invalid task path: {task_path:?}"))?;
 
         eprintln!("Checking task \"{task_name}\" at {task_path:?}");
-        check_task(&task_path).with_context(|| format!("task \"{task_name}\" check failed"))?;
+        check_task(&task_path).with_context(|| format!("failed to check task \"{task_name}\""))?;
     }
 
     eprintln!("OK!");

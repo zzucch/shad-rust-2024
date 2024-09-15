@@ -81,13 +81,10 @@ fn push_task(path: &Path, branch: &str, verbose: bool) -> Result<()> {
     // NB: pushing using libgit2 would require dealing with user authentication,
     // which is very difficult to get right.
     // So we give up and use git cli.
-    let shell = Shell::new().context("failed to create shell")?;
-    shell.change_dir(path);
+    let sh = Shell::new().context("failed to create shell")?;
+    sh.change_dir(path);
 
-    let cmd = cmd!(
-        shell,
-        "git push --force {STUDENT_REMOTE_NAME} HEAD:{branch}"
-    );
+    let cmd = cmd!(sh, "git push --force {STUDENT_REMOTE_NAME} HEAD:{branch}");
 
     if verbose {
         return cmd
