@@ -1,6 +1,12 @@
+use std::vec;
+
+use rand::Rng;
+
 /// Represents a grid of boolean values.
 pub struct BoolGrid {
-    // TODO: your code here.
+    width: usize,
+    height: usize,
+    lattice: Vec<Vec<bool>>,
 }
 
 impl BoolGrid {
@@ -11,8 +17,11 @@ impl BoolGrid {
     /// * `width` - grid width.
     /// * `height` - grid height.
     pub fn new(width: usize, height: usize) -> Self {
-        // TODO: your code here.
-        unimplemented!()
+        Self {
+            width,
+            height,
+            lattice: vec![vec![false; height]; width],
+        }
     }
 
     /// Creates a new grid with every value initialized randomly.
@@ -24,20 +33,29 @@ impl BoolGrid {
     /// * `vacancy` - probability of any given value being equal
     ///   to `false`.
     pub fn random(width: usize, height: usize, vacancy: f64) -> Self {
-        // TODO: your code here.
-        unimplemented!()
+        let mut grid = BoolGrid::new(width, height);
+
+        let mut rng = rand::thread_rng();
+
+        for x in 0..width {
+            for y in 0..height {
+                if rng.gen_range(0.0..1.0) > vacancy {
+                    grid.lattice[x][y] = true;
+                }
+            }
+        }
+
+        grid
     }
 
     /// Returns grid width.
     pub fn width(&self) -> usize {
-        // TODO: your code here.
-        unimplemented!()
+        self.width
     }
 
     /// Returns grid height.
     pub fn height(&self) -> usize {
-        // TODO: your code here.
-        unimplemented!()
+        self.height
     }
 
     /// Returns the current value of a given cell.
@@ -53,8 +71,7 @@ impl BoolGrid {
     /// If `x` or `y` is out of bounds, this method may panic
     /// (or return incorrect result).
     pub fn get(&self, x: usize, y: usize) -> bool {
-        // TODO: your code here.
-        unimplemented!()
+        self.lattice[x][y]
     }
 
     /// Sets a new value to a given cell.
@@ -70,11 +87,8 @@ impl BoolGrid {
     /// If `x` or `y` is out of bounds, this method may panic
     /// (or set value to some other unspecified cell).
     pub fn set(&mut self, x: usize, y: usize, value: bool) {
-        // TODO: your code here.
-        unimplemented!()
+        self.lattice[x][y] = value
     }
-
-    // TODO: your code here.
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,8 +97,42 @@ impl BoolGrid {
 /// from any cell with `y` == 0 to any cell with `y` == `height` - 1.
 /// If the grid is empty (`width` == 0 or `height` == 0), it percolates.
 pub fn percolates(grid: &BoolGrid) -> bool {
-    // TODO: your code here.
-    unimplemented!()
+    if grid.width() == 0 || grid.height() == 0 {
+        return true;
+    }
+
+    for x in 0..grid.width() {
+        let mut visited = vec![vec![false; grid.width()]; grid.height()];
+
+        if dfs(grid, &mut visited, x, 0) {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn dfs(grid: &BoolGrid, visited: &mut Vec<Vec<bool>>, x: usize, y: usize) -> bool {
+    if grid.get(x, y) {
+        return false;
+    } else if y == grid.height() - 1 {
+        return true;
+    }
+
+    visited[y][x] = true;
+
+    let moves = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+
+    for (dy, dx) in moves.iter() {
+        let y = y.wrapping_add(*dy as usize);
+        let x = x.wrapping_add(*dx as usize);
+
+        if y < grid.height() && x < grid.width() && !visited[y][x] && dfs(grid, visited, x, y) {
+            return true;
+        }
+    }
+
+    false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
