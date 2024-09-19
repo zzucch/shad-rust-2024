@@ -40,6 +40,9 @@ struct LintConfig {
 
     #[serde(default)]
     allow_unsafe: bool,
+
+    #[serde(default)]
+    allow_exit: bool,
 }
 
 #[derive(Deserialize, Default)]
@@ -68,14 +71,21 @@ fn run_lints(sh: &Shell, config: LintConfig) -> Result<()> {
     }
 
     if config.clippy {
-        let deny_unsafe_code = if config.allow_unsafe {
-            &[] as &[_]
-        } else {
-            &["--deny", "unsafe_code"]
-        };
-        cmd!(sh, "cargo clippy -- --deny warnings {deny_unsafe_code...}").run()?;
+        let mut args: Vec<&str> = vec![];
+
+        if !config.allow_unsafe {
+            args.extend(&["--deny", "unsafe_code"]);
+        }
+
+        if !config.allow_exit {
+            args.extend(&["--deny", "clippy::exit"]);
+        }
+
+        cmd!(sh, "cargo clippy -- --deny warnings {args...}").run()?;
     } else if !config.allow_unsafe {
         bail!("`lint.allow_unsafe` cannot be false with `lint.clippy` disabled");
+    } else if !config.allow_exit {
+        bail!("`lint.allow_exit` cannot be false with `lint.clippy` disabled");
     }
 
     Ok(())
