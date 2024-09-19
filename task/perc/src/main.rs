@@ -2,6 +2,7 @@
 
 use std::{any::type_name, env, process::exit, str::FromStr};
 
+#[allow(clippy::exit)]
 fn parse_or_exit<T: FromStr>(s: &str) -> T {
     match s.parse() {
         Ok(n) => n,
