@@ -2,13 +2,12 @@ use crate::util::canonicalize;
 
 use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;
-use git2::{Repository, RepositoryOpenFlags, StatusOptions};
+use gix::{progress::prodash::progress, remote::Direction, Repository};
 use xshell::{cmd, Shell};
 
 use std::{
     env,
     ffi::OsStr,
-    iter,
     path::{Path, PathBuf},
 };
 
@@ -30,23 +29,15 @@ pub struct SubmitArgs {
 ////////////////////////////////////////////////////////////////////////////////
 
 fn uncommitted_changes(repo: &Repository, task_name: &str) -> Result<Vec<PathBuf>> {
-    let statuses = repo
-        .statuses(Some(
-            &mut StatusOptions::new()
-                .include_untracked(false)
-                .include_ignored(false),
-        ))
-        .with_context(|| format!("failed to get git statuses in {:?}", task_name))?;
+    let status = repo
+        .status(progress::Discard)
+        .context("failed to get repository status")?;
 
-    let task_prefix = format!("{}/", task_name);
+    let task_prefix = format!("task/{task_name}/");
 
     let mut paths = vec![];
-    for status in statuses.iter() {
-        let path = PathBuf::from(
-            status
-                .path()
-                .context("'git diff' contains an entry with non-utf8 path")?,
-        );
+    for mb_entry in status.into_index_worktree_iter(None)? {
+        let path = String::from_utf8_lossy(mb_entry?.rela_path()).into_owned();
         if path.starts_with(&task_prefix) {
             paths.push(path.into());
         }
@@ -58,27 +49,25 @@ fn uncommitted_changes(repo: &Repository, task_name: &str) -> Result<Vec<PathBuf
 fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
     let remote = match repo.find_remote(remote) {
         Ok(remote) => remote,
-        Err(err) => {
-            if err.code() == git2::ErrorCode::NotFound {
-                bail!(
-                    "remote '{}' does not exist. Please create it according to the course tutorial.",
-                    STUDENT_REMOTE_NAME
-                );
-            } else {
-                bail!("failed to find remote '{}': {}", remote, err);
-            }
+        Err(err) if matches!(err, gix::remote::find::existing::Error::NotFound { .. }) => {
+            bail!(
+                "remote '{}' does not exist. Please create it according to the course tutorial.",
+                STUDENT_REMOTE_NAME
+            );
         }
+        Err(err) => bail!("failed to find remote '{}': {}", remote, err),
     };
 
     let url = remote
-        .url()
+        .url(Direction::Push)
         .context("failed to get remote url: not a valid utf-8")?;
-    let (_, tail) = url.rsplit_once("/").context("remote url has no '/'")?;
+    let path = String::from_utf8_lossy(&url.path);
+    let (_, tail) = path.rsplit_once("/").context("remote url has no '/'")?;
     Ok(tail.trim_end_matches(".git").to_string())
 }
 
 fn push_task(path: &Path, branch: &str, verbose: bool) -> Result<()> {
-    // NB: pushing using libgit2 would require dealing with user authentication,
+    // NB: pushing using gix would require dealing with user authentication,
     // which is very difficult to get right.
     // So we give up and use git cli.
     let sh = Shell::new().context("failed to create shell")?;
@@ -118,12 +107,7 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
         .with_context(|| format!("invalid task path: {task_path:?}"))?
         .to_owned();
 
-    let repo = Repository::open_ext(
-        &task_path,
-        RepositoryOpenFlags::empty(),
-        iter::empty::<&OsStr>(),
-    )
-    .context("failed to open git repository")?;
+    let repo = gix::discover(&task_path).context("failed to discover git repository")?;
 
     let uncommitted_files = uncommitted_changes(&repo, &task_name)
         .context("failed to check for uncommitted changes")?;
