@@ -7,6 +7,7 @@ use xshell::{cmd, Shell};
 use xtask_util::canonicalize;
 
 use std::{
+    collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
     str::FromStr,
@@ -25,7 +26,10 @@ fn create_shell(path: &Path) -> Result<Shell> {
     Ok(sh)
 }
 
-fn find_forbidden_ident(token_stream: TokenStream, forbidden_idents: &[Ident]) -> Option<Ident> {
+fn find_forbidden_ident(
+    token_stream: TokenStream,
+    forbidden_idents: &HashSet<Ident>,
+) -> Option<Ident> {
     for token in token_stream {
         match token {
             TokenTree::Group(group) => {
@@ -34,10 +38,8 @@ fn find_forbidden_ident(token_stream: TokenStream, forbidden_idents: &[Ident]) -
                 }
             }
             TokenTree::Ident(ident) => {
-                for forbidden_ident in forbidden_idents {
-                    if &ident == forbidden_ident {
-                        return Some(ident);
-                    }
+                if forbidden_idents.contains(&ident) {
+                    return Some(ident);
                 }
             }
             TokenTree::Punct(_) => continue,
@@ -50,7 +52,7 @@ fn find_forbidden_ident(token_stream: TokenStream, forbidden_idents: &[Ident]) -
 fn ensure_no_forbidden_idents(
     task_path: &Path,
     allowlist: &[PathBuf],
-    forbidden_idents: &[Ident],
+    forbidden_idents: &HashSet<Ident>,
 ) -> Result<()> {
     for entry in allowlist {
         let path = task_path.join(entry);
@@ -87,12 +89,12 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
         cmd!(sh, "cargo clippy -- --deny warnings {args...}").run()?;
     }
 
-    let mut forbidden_idents = vec![];
+    let mut forbidden_idents = HashSet::new();
     if !config.allow_unsafe {
-        forbidden_idents.push(Ident::new("unsafe", Span::call_site()));
+        forbidden_idents.insert(Ident::new("unsafe", Span::call_site()));
     }
     if !config.allow_exit {
-        forbidden_idents.push(Ident::new("exit", Span::call_site()));
+        forbidden_idents.insert(Ident::new("exit", Span::call_site()));
     }
 
     ensure_no_forbidden_idents(task_path, allowlist, &forbidden_idents)
