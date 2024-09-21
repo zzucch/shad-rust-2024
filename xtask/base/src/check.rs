@@ -1,18 +1,16 @@
-use crate::util::{canonicalize, read_config};
+use crate::checker_config::{read_checker_config, BuildConfig, LintConfig, TestConfig};
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
-use serde::Deserialize;
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use xshell::{cmd, Shell};
+use xtask_util::canonicalize;
 
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
+    str::FromStr,
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-const CONFIG_FILE_NAME: &str = ".check.toml";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -21,57 +19,62 @@ pub struct CheckArgs {
     pub task_path: Vec<PathBuf>,
 }
 
-#[derive(Deserialize)]
-struct Config {
-    lint: LintConfig,
-    test: TestConfig,
-
-    #[serde(default)]
-    build: BuildConfig,
+fn create_shell(path: &Path) -> Result<Shell> {
+    let sh = Shell::new().context("failed to create shell")?;
+    sh.change_dir(path);
+    Ok(sh)
 }
 
-#[derive(Deserialize)]
-struct LintConfig {
-    #[serde(default)]
-    fmt: bool,
-
-    #[serde(default)]
-    clippy: bool,
-
-    #[serde(default)]
-    allow_unsafe: bool,
-
-    #[serde(default)]
-    allow_exit: bool,
+fn find_forbidden_ident(token_stream: TokenStream, forbidden_idents: &[Ident]) -> Option<Ident> {
+    for token in token_stream {
+        match token {
+            TokenTree::Group(group) => {
+                if let Some(ident) = find_forbidden_ident(group.stream(), forbidden_idents) {
+                    return Some(ident);
+                }
+            }
+            TokenTree::Ident(ident) => {
+                for forbidden_ident in forbidden_idents {
+                    if &ident == forbidden_ident {
+                        return Some(ident);
+                    }
+                }
+            }
+            TokenTree::Punct(_) => continue,
+            TokenTree::Literal(_) => continue,
+        }
+    }
+    None
 }
 
-#[derive(Deserialize, Default)]
-struct BuildConfig {
-    #[serde(default)]
-    debug: bool,
-
-    #[serde(default)]
-    release: bool,
+fn ensure_no_forbidden_idents(
+    task_path: &Path,
+    allowlist: &[PathBuf],
+    forbidden_idents: &[Ident],
+) -> Result<()> {
+    for entry in allowlist {
+        let path = task_path.join(entry);
+        let source =
+            fs::read_to_string(&path).with_context(|| format!("failed to read {path:?}"))?;
+        let Ok(token_stream) = TokenStream::from_str(&source) else {
+            bail!("file contains invalid Rust source: {path:?}");
+        };
+        if let Some(ident) = find_forbidden_ident(token_stream, forbidden_idents) {
+            bail!("found forbidden identifier \"{ident}\" in file {path:?}");
+        }
+    }
+    Ok(())
 }
 
-#[derive(Deserialize)]
-struct TestConfig {
-    #[serde(default)]
-    debug: bool,
+fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Result<()> {
+    let sh = create_shell(task_path)?;
 
-    #[serde(default)]
-    release: bool,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-fn run_lints(sh: &Shell, config: LintConfig) -> Result<()> {
     if config.fmt {
         cmd!(sh, "cargo fmt -- --check").run()?;
     }
 
     if config.clippy {
-        let mut args: Vec<&str> = vec![];
+        let mut args = Vec::<&str>::new();
 
         if !config.allow_unsafe {
             args.extend(&["--deny", "unsafe_code"]);
@@ -82,16 +85,22 @@ fn run_lints(sh: &Shell, config: LintConfig) -> Result<()> {
         }
 
         cmd!(sh, "cargo clippy -- --deny warnings {args...}").run()?;
-    } else if !config.allow_unsafe {
-        bail!("`lint.allow_unsafe` cannot be false with `lint.clippy` disabled");
-    } else if !config.allow_exit {
-        bail!("`lint.allow_exit` cannot be false with `lint.clippy` disabled");
     }
 
-    Ok(())
+    let mut forbidden_idents = vec![];
+    if !config.allow_unsafe {
+        forbidden_idents.push(Ident::new("unsafe", Span::call_site()));
+    }
+    if !config.allow_exit {
+        forbidden_idents.push(Ident::new("exit", Span::call_site()));
+    }
+
+    ensure_no_forbidden_idents(task_path, allowlist, &forbidden_idents)
 }
 
-fn run_build(sh: &Shell, config: BuildConfig) -> Result<()> {
+fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
+    let sh = create_shell(task_path)?;
+
     if config.debug {
         cmd!(sh, "cargo build").run()?;
     }
@@ -103,7 +112,9 @@ fn run_build(sh: &Shell, config: BuildConfig) -> Result<()> {
     Ok(())
 }
 
-fn run_tests(sh: &Shell, config: TestConfig) -> Result<()> {
+fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
+    let sh = create_shell(task_path)?;
+
     if config.debug {
         cmd!(sh, "cargo test").run()?;
     }
@@ -115,24 +126,14 @@ fn run_tests(sh: &Shell, config: TestConfig) -> Result<()> {
     Ok(())
 }
 
-fn ensure_grader_config_exists(task_path: &Path) -> Result<()> {
-    let path = task_path.join(".grade.toml");
-    ensure!(path.exists(), "file not found: {path:?}");
-    Ok(())
-}
-
 fn check_task(path: &Path) -> Result<()> {
-    let config =
-        read_config::<Config>(path.join(CONFIG_FILE_NAME)).context("failed to read config")?;
+    let config = read_checker_config(path).context("failed to read config")?;
 
-    let sh = Shell::new().context("failed to create shell")?;
-    sh.change_dir(path);
+    run_lints(path, &config.lint, &config.grade.allowlist)?;
+    run_build(path, &config.build)?;
+    run_tests(path, &config.test)?;
 
-    run_lints(&sh, config.lint)?;
-    run_build(&sh, config.build)?;
-    run_tests(&sh, config.test)?;
-
-    ensure_grader_config_exists(path)
+    Ok(())
 }
 
 pub fn check(args: CheckArgs) -> Result<()> {

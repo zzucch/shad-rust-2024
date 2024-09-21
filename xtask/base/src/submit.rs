@@ -1,4 +1,4 @@
-use crate::util::canonicalize;
+use xtask_util::canonicalize;
 
 use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;

@@ -1,6 +1,6 @@
 mod check;
+mod checker_config;
 mod submit;
-mod util;
 
 use anyhow::Result;
 use clap::Subcommand;

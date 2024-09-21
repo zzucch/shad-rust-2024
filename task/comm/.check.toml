@@ -5,3 +5,8 @@ clippy = true
 [test]
 debug = true
 release = true
+
+[grade]
+allowlist = [
+  "src/main.rs",
+]
