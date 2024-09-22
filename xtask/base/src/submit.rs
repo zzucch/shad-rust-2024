@@ -96,6 +96,11 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
             .unwrap_or(env::current_dir().context("failed to get cwd")?),
     )?;
 
+    ensure!(
+        task_path.join(".check.toml").exists(),
+        "not a task directory: {task_path:?}",
+    );
+
     let task_name = task_path
         .file_name()
         .and_then(OsStr::to_str)
