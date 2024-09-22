@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = { version = "1.0.87", default-features = false }
+anyhow = { version = "1.0.87", default-features = false, features = ["std"] }
 clap = { version = "4.5.17", features = ["derive", "std"], default-features = false }
 xshell = { version = "0.2.6", default-features = false }
 xtask-base = { path = "../../../xtask/base" }

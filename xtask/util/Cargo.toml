@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = { version = "1.0.87", default-features = false }
+anyhow = { version = "1.0.87", default-features = false, features = ["std"] }
 gix = { version = "0.66.0", default-features = false }
 serde = { version = "1.0.210", features = ["derive"], default-features = false }
 toml = { version = "0.8.19", default-features = false, features = ["parse"] }
