@@ -6,7 +6,6 @@ use std::{
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use xshell::{cmd, Shell};
-use xtask_util::get_cwd_repo_path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -46,9 +45,7 @@ fn build_binaries() -> Result<()> {
 fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
     let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
 
-    let repo_path = get_cwd_repo_path().unwrap();
-    let bots = ["fool.wasm", "coward.wasm", "aggressive.wasm"]
-        .map(|name| repo_path.join("task/paperio/bots").join(name));
+    let bots = ["bots/fool.wasm", "bots/coward.wasm", "bots/aggressive.wasm"];
 
     for bot in bots {
         handles.push(thread::spawn(move || -> Result<()> {
@@ -190,10 +187,9 @@ fn challenge() -> Result<()> {
     build_binaries()?;
 
     for i in 1..=3 {
-        println!("Running test #{i}...");
+        eprintln!("Running test #{i}...");
         test_once()?;
     }
-    println!("Test passed!");
     Ok(())
 }
 
