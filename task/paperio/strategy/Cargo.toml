@@ -1,0 +1,12 @@
+[package]
+name = "paperio-strategy"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "paperio-bot"
+path = "src/main.rs"
+
+[dependencies]
+paperio-proto = { version = "0.1.0", path = "../proto" }
+rand = "0.8.5"

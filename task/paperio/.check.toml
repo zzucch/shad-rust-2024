@@ -1,0 +1,17 @@
+[lint]
+package = "paperio-strategy"
+fmt = true
+clippy = true
+
+[build]
+package = "paperio-strategy"
+debug = true
+release = true
+
+[[test.custom_hooks]]
+command = ["cargo", "xtask", "challenge"]
+
+[grade]
+allowlist = [
+  "strategy/src/strategy.rs",
+]
