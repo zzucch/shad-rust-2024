@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = { version = "1.0.87", default-features = false, features = ["std"] }
-clap = { version = "4.5.17", features = ["derive", "std"], default-features = false }
-gix = { version = "0.66.0", default-features = false, features = ["status"] }
-proc-macro2 = { version = "1.0.86", default-features = false }
-serde = { version = "1.0.210", features = ["derive"], default-features = false }
-xshell = { version = "0.2.6", default-features = false }
+anyhow = { version = "1.0.87" }
+clap = { version = "4.5.17", features = ["derive"] }
+gix = { version = "0.66.0" }
+proc-macro2 = { version = "1.0.86" }
+serde = { version = "1.0.210", features = ["derive"] }
+xshell = { version = "0.2.6" }
 xtask-util = { path = "../util" }
