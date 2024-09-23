@@ -1,12 +1,12 @@
 use std::{
-    path::Path,
     thread::{self, JoinHandle},
     time::Duration,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use xshell::{cmd, Shell};
+use xtask_util::get_cwd_repo_path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -30,22 +30,29 @@ enum Command {
     Challenge,
 }
 
-fn create_shell(path: impl AsRef<Path>) -> Result<Shell> {
-    let sh = Shell::new().context("failed to create shell")?;
-    sh.change_dir(path);
-    Ok(sh)
+fn build_binaries() -> Result<()> {
+    let sh = Shell::new()?;
+    for package in [
+        "paperio-wasm-launcher",
+        "paperio-strategy",
+        "paperio-gui",
+        "paperio-server",
+    ] {
+        cmd!(sh, "cargo build --package {package} --release").run()?;
+    }
+    Ok(())
 }
 
-fn launch_bots() -> Vec<JoinHandle<Result<()>>> {
+fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
     let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
-    let bots = [
-        "../bots/fool.wasm",
-        "../bots/coward.wasm",
-        "../bots/aggressive.wasm",
-    ];
+
+    let repo_path = get_cwd_repo_path().unwrap();
+    let bots = ["fool.wasm", "coward.wasm", "aggressive.wasm"]
+        .map(|name| repo_path.join("task/paperio/bots").join(name));
+
     for bot in bots {
         handles.push(thread::spawn(move || -> Result<()> {
-            let bot_sh = create_shell("wasm-launcher")?;
+            let bot_sh = Shell::new()?;
             cmd!(
                 bot_sh,
                 "cargo run --package paperio-wasm-launcher --release --"
@@ -59,12 +66,12 @@ fn launch_bots() -> Vec<JoinHandle<Result<()>>> {
         }));
         thread::sleep(Duration::from_millis(100));
     }
-    handles
+    Ok(handles)
 }
 
 fn launch_strategy() -> JoinHandle<Result<()>> {
     thread::spawn(|| -> Result<()> {
-        let strategy_sh = create_shell("strategy")?;
+        let strategy_sh = Shell::new()?;
         cmd!(
             strategy_sh,
             "cargo run --package paperio-strategy --release -- 8000"
@@ -76,7 +83,7 @@ fn launch_strategy() -> JoinHandle<Result<()>> {
 
 fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
     thread::spawn(move || -> Result<()> {
-        let gui_sh = create_shell("gui")?;
+        let gui_sh = Shell::new()?;
         cmd!(gui_sh, "cargo run --package paperio-gui --release --")
             .arg("-p")
             .arg(if is_spectator { "8001" } else { "8000" })
@@ -87,7 +94,7 @@ fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
 
 fn launch_server(with_spectator: bool) -> JoinHandle<Result<bool>> {
     let handle = thread::spawn(move || -> Result<bool> {
-        let server_sh = create_shell("server")?;
+        let server_sh = Shell::new()?;
         let mut cmd = cmd!(server_sh, "cargo run --release --package paperio-server --");
         if with_spectator {
             cmd = cmd.arg("-s").arg("1");
@@ -102,8 +109,10 @@ fn launch_server(with_spectator: bool) -> JoinHandle<Result<bool>> {
 }
 
 fn play() -> Result<()> {
+    build_binaries()?;
+
     let server_handle = launch_server(false);
-    let bot_handles = launch_bots();
+    let bot_handles = launch_bots()?;
     let gui_handle = launch_gui(false);
 
     for handle in bot_handles {
@@ -123,8 +132,10 @@ fn play() -> Result<()> {
 }
 
 fn watch() -> Result<()> {
+    build_binaries()?;
+
     let server_handle = launch_server(true);
-    let bot_handles = launch_bots();
+    let bot_handles = launch_bots()?;
     thread::sleep(Duration::from_millis(500));
     let strategy_handle = launch_strategy();
     let gui_handle = launch_gui(true);
@@ -153,7 +164,7 @@ fn watch() -> Result<()> {
 
 fn test_once() -> Result<()> {
     let server_handle = launch_server(false);
-    let bot_handles = launch_bots();
+    let bot_handles = launch_bots()?;
     thread::sleep(Duration::from_millis(500));
     let strategy_handle = launch_strategy();
 
@@ -176,6 +187,8 @@ fn test_once() -> Result<()> {
 }
 
 fn challenge() -> Result<()> {
+    build_binaries()?;
+
     for i in 1..=3 {
         println!("Running test #{i}...");
         test_once()?;
