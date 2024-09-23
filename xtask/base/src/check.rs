@@ -20,6 +20,13 @@ pub struct CheckArgs {
     pub task_path: Vec<PathBuf>,
 }
 
+fn make_package_args<'a>(package: &'a Option<String>) -> Vec<&'a str> {
+    match package {
+        Some(package) => vec!["--package", package],
+        None => vec![],
+    }
+}
+
 fn create_shell(path: &Path) -> Result<Shell> {
     let sh = Shell::new().context("failed to create shell")?;
     sh.change_dir(path);
@@ -71,8 +78,11 @@ fn ensure_no_forbidden_idents(
 fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Result<()> {
     let sh = create_shell(task_path)?;
 
+    let package_args = make_package_args(&config.package);
+    let package_args = &package_args;
+
     if config.fmt {
-        cmd!(sh, "cargo fmt -- --check").run()?;
+        cmd!(sh, "cargo fmt {package_args...} -- --check").run()?;
     }
 
     if config.clippy {
@@ -86,7 +96,11 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
             args.extend(&["--deny", "clippy::exit"]);
         }
 
-        cmd!(sh, "cargo clippy -- --deny warnings {args...}").run()?;
+        cmd!(
+            sh,
+            "cargo clippy {package_args...} -- --deny warnings {args...}"
+        )
+        .run()?;
     }
 
     let mut forbidden_idents = HashSet::new();
@@ -103,12 +117,15 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
 fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
+    let package_args = make_package_args(&config.package);
+    let package_args = &package_args;
+
     if config.debug {
-        cmd!(sh, "cargo build").run()?;
+        cmd!(sh, "cargo build {package_args...}").run()?;
     }
 
     if config.release {
-        cmd!(sh, "cargo build --release").run()?;
+        cmd!(sh, "cargo build {package_args...} --release").run()?;
     }
 
     Ok(())
@@ -117,12 +134,15 @@ fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
 fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
+    let package_args = make_package_args(&config.package);
+    let package_args = &package_args;
+
     if config.debug {
-        cmd!(sh, "cargo test").run()?;
+        cmd!(sh, "cargo test {package_args...}").run()?;
     }
 
     if config.release {
-        cmd!(sh, "cargo test --release").run()?;
+        cmd!(sh, "cargo test {package_args...} --release").run()?;
     }
 
     for hook in &config.custom_hooks {

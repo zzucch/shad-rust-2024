@@ -21,6 +21,8 @@ pub struct CheckerConfig {
 
 #[derive(Deserialize)]
 pub struct LintConfig {
+    pub package: Option<String>,
+
     #[serde(default)]
     pub fmt: bool,
 
@@ -36,6 +38,8 @@ pub struct LintConfig {
 
 #[derive(Deserialize, Default)]
 pub struct BuildConfig {
+    pub package: Option<String>,
+
     #[serde(default)]
     pub debug: bool,
 
@@ -50,6 +54,8 @@ pub struct CustomHookConfig {
 
 #[derive(Deserialize)]
 pub struct TestConfig {
+    pub package: Option<String>,
+
     #[serde(default)]
     pub debug: bool,
 
