@@ -78,8 +78,7 @@ fn ensure_no_forbidden_idents(
 fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Result<()> {
     let sh = create_shell(task_path)?;
 
-    let package_args = make_package_args(&config.package);
-    let package_args = &package_args;
+    let package_args = &make_package_args(&config.package);
 
     if config.fmt {
         cmd!(sh, "cargo fmt {package_args...} -- --check").run()?;
@@ -117,8 +116,7 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
 fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
-    let package_args = make_package_args(&config.package);
-    let package_args = &package_args;
+    let package_args = &make_package_args(&config.package);
 
     if config.debug {
         cmd!(sh, "cargo build {package_args...}").run()?;
@@ -134,8 +132,7 @@ fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
 fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
-    let package_args = make_package_args(&config.package);
-    let package_args = &package_args;
+    let package_args = &make_package_args(&config.package);
 
     if config.debug {
         cmd!(sh, "cargo test {package_args...}").run()?;
