@@ -44,12 +44,20 @@ pub struct BuildConfig {
 }
 
 #[derive(Deserialize)]
+pub struct CustomHookConfig {
+    pub command: Vec<String>,
+}
+
+#[derive(Deserialize)]
 pub struct TestConfig {
     #[serde(default)]
     pub debug: bool,
 
     #[serde(default)]
     pub release: bool,
+
+    #[serde(default)]
+    pub custom_hooks: Vec<CustomHookConfig>,
 }
 
 #[derive(Deserialize)]

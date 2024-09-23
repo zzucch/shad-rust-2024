@@ -1,6 +1,6 @@
 use crate::checker_config::{read_checker_config, BuildConfig, LintConfig, TestConfig};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use xshell::{cmd, Shell};
@@ -123,6 +123,14 @@ fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
 
     if config.release {
         cmd!(sh, "cargo test --release").run()?;
+    }
+
+    for hook in &config.custom_hooks {
+        ensure!(
+            !hook.command.is_empty(),
+            "test custom hook command cannot be empty",
+        );
+        sh.cmd(&hook.command[0]).args(&hook.command[1..]).run()?;
     }
 
     Ok(())
