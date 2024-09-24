@@ -1,5 +1,6 @@
 **/*.code-workspace
 **/.vscode
+**/.idea
 **/target
 **/test_artifacts
 **/vendor
