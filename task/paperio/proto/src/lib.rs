@@ -42,6 +42,7 @@ pub struct Player {
     pub position: Cell,
     pub lines: Vec<Cell>,
     pub direction: Option<Direction>,
+    pub has_lost: bool,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy, FromPrimitive, EnumIter)]
