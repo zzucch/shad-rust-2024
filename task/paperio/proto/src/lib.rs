@@ -200,7 +200,8 @@ mod test {
                             "territory": [[0, 0], [0, 1]],
                             "position": [0, 1],
                             "lines": [[1, 0], [1, 1]],
-                            "direction": "left"
+                            "direction": "left",
+                            "has_lost": true
                         }
                     },
                     "tick_num": 748
@@ -220,6 +221,7 @@ mod test {
                         position: Cell(0, 1),
                         lines: vec![Cell(1, 0), Cell(1, 1)],
                         direction: Some(Direction::Left),
+                        has_lost: true,
                     }
                 )]
                 .into_iter()
