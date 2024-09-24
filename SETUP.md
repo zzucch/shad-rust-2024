@@ -88,7 +88,5 @@
 1. Отправьте своё решение на сервер командой `cargo xtask submit`. Ваш сабмит должен появиться по ссылке `My Submits` на [rust.manytask.org](https://rust.manytask.org).
 После успешного прохождения тестов вам должно начислиться 1 балл в
 [таблице с баллами](https://docs.google.com/spreadsheets/d/1BZEivXenFrBONNpQqpeGxbc2kIXX_F-02Z7QolADsXE/edit).
-	* Если `submit` падает с ошибкой сборки `openssl-sys`, значит, у вас не установлены заголовки libssl.
-	  На Ubuntu поставить их можно командой `sudo apt install libssl-dev`.
 
 Если на каком-то этапе у вас возникли проблемы - пишите в чат курса.
