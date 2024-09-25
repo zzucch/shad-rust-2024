@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use xshell::{cmd, Shell};
 
@@ -25,170 +25,208 @@ enum Command {
     /// Run your strategy and gui to look how it plays.
     Watch,
 
+    /// Wait for your strategy to connect on port 8004 and then run the game.
+    Debug,
+
     /// Run you strategy three times against bots (no gui).
     Challenge,
 }
 
-fn build_binaries() -> Result<()> {
-    let sh = Shell::new()?;
-    for package in [
-        "paperio-wasm-launcher",
-        "paperio-strategy",
-        "paperio-gui",
-        "paperio-server",
-    ] {
-        cmd!(sh, "cargo build --package {package} --release").run()?;
-    }
-    Ok(())
+#[derive(Clone, Copy)]
+enum GuiMode {
+    None,
+    Spectator,
+    Player,
 }
 
-fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
-    let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
+enum Outcome {
+    Won,
+    Lost,
+}
 
-    let bots = ["bots/fool.wasm", "bots/coward.wasm", "bots/aggressive.wasm"];
+struct Recipe {
+    gui_mode: GuiMode,
+    run_strategy: bool,
+}
 
-    for bot in bots {
-        handles.push(thread::spawn(move || -> Result<()> {
-            let bot_sh = Shell::new()?;
+impl Recipe {
+    fn run(&self) -> Result<()> {
+        Self::build_binaries()?;
+
+        let server_handle = match self.gui_mode {
+            GuiMode::Spectator => Self::launch_server(true),
+            _ => Self::launch_server(false),
+        };
+
+        let bot_handles = Self::launch_bots()?;
+
+        let gui_handle = match self.gui_mode {
+            GuiMode::None => None,
+            GuiMode::Spectator => Some(Self::launch_gui(true)),
+            GuiMode::Player => Some(Self::launch_gui(false)),
+        };
+
+        let strategy_handle = if self.run_strategy {
+            Some(Self::launch_strategy())
+        } else {
+            None
+        };
+
+        for handle in bot_handles {
+            let _ = handle.join();
+        }
+
+        for mb_handle in [gui_handle, strategy_handle] {
+            if let Some(handle) = mb_handle {
+                let _ = handle.join();
+            }
+        }
+
+        match server_handle.join() {
+            Ok(Ok(Outcome::Won)) => eprintln!("Congratulations, you won!"),
+            Ok(Ok(Outcome::Lost)) => {
+                eprintln!("You lost :(");
+                bail!("strategy lost");
+            }
+            Ok(Err(err)) => {
+                bail!("server error: {err}")
+            }
+            Err(_) => {
+                bail!("server panicked")
+            }
+        }
+
+        Ok(())
+    }
+
+    fn build_binaries() -> Result<()> {
+        let sh = Shell::new()?;
+        for package in [
+            "paperio-wasm-launcher",
+            "paperio-strategy",
+            "paperio-gui",
+            "paperio-server",
+        ] {
+            cmd!(sh, "cargo build --package {package} --release").run()?;
+        }
+        Ok(())
+    }
+
+    fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
+        let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
+
+        let bots = ["bots/fool.wasm", "bots/coward.wasm", "bots/aggressive.wasm"];
+
+        for bot in bots {
+            handles.push(thread::spawn(move || -> Result<()> {
+                let bot_sh = Shell::new()?;
+                cmd!(
+                    bot_sh,
+                    "cargo run --package paperio-wasm-launcher --release --"
+                )
+                .arg(bot)
+                .ignore_stdout()
+                .ignore_stderr()
+                .ignore_status()
+                .run()?;
+
+                Ok(())
+            }));
+        }
+        Ok(handles)
+    }
+
+    fn launch_strategy() -> JoinHandle<Result<()>> {
+        thread::spawn(|| -> Result<()> {
+            let strategy_sh = Shell::new()?;
             cmd!(
-                bot_sh,
-                "cargo run --package paperio-wasm-launcher --release --"
+                strategy_sh,
+                "cargo run --package paperio-strategy --release -- 8004"
             )
-            .arg(bot)
-            .ignore_stdout()
-            .ignore_stderr()
-            .ignore_status()
             .run()?;
             Ok(())
-        }));
-        thread::sleep(Duration::from_millis(100));
+        })
     }
-    Ok(handles)
-}
 
-fn launch_strategy() -> JoinHandle<Result<()>> {
-    thread::spawn(|| -> Result<()> {
-        let strategy_sh = Shell::new()?;
-        cmd!(
-            strategy_sh,
-            "cargo run --package paperio-strategy --release -- 8000"
-        )
-        .run()?;
-        Ok(())
-    })
-}
+    fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
+        thread::spawn(move || -> Result<()> {
+            let gui_sh = Shell::new()?;
 
-fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
-    thread::spawn(move || -> Result<()> {
-        let gui_sh = Shell::new()?;
-        cmd!(gui_sh, "cargo run --package paperio-gui --release --")
-            .arg("-p")
-            .arg(if is_spectator { "8001" } else { "8000" })
+            let (port, spectator_arg) = if is_spectator {
+                ("8001", &["--spectator"] as &[_])
+            } else {
+                ("8004", &[] as &[_])
+            };
+            cmd!(
+                gui_sh,
+                "cargo run --package paperio-gui --release -- -p {port} {spectator_arg...}"
+            )
             .run()?;
-        Ok(())
-    })
-}
 
-fn launch_server(with_spectator: bool) -> JoinHandle<Result<bool>> {
-    let handle = thread::spawn(move || -> Result<bool> {
-        let server_sh = Shell::new()?;
-        let mut cmd = cmd!(server_sh, "cargo run --release --package paperio-server --");
-        if with_spectator {
-            cmd = cmd.arg("-s").arg("1");
-        }
-        let output = cmd.output()?;
-        let output = String::from_utf8(output.stderr)?;
-        let is_winner = output.lines().any(|l| l.contains("Winner is Player #4"));
-        Ok(is_winner)
-    });
-    thread::sleep(Duration::from_millis(100));
-    handle
+            Ok(())
+        })
+    }
+
+    fn launch_server(with_spectator: bool) -> JoinHandle<Result<Outcome>> {
+        let handle = thread::spawn(move || -> Result<Outcome> {
+            let server_sh = Shell::new()?;
+
+            let mut cmd = cmd!(
+                server_sh,
+                "cargo run --release --package paperio-server -- --p4 8004"
+            );
+            if with_spectator {
+                cmd = cmd.arg("--spectator-count").arg("1");
+            }
+
+            let output = cmd.output()?;
+            let output = String::from_utf8(output.stderr)?;
+
+            if output.lines().any(|l| l.contains("Winner is Player #4")) {
+                Ok(Outcome::Won)
+            } else {
+                Ok(Outcome::Lost)
+            }
+        });
+
+        thread::sleep(Duration::from_millis(500));
+        handle
+    }
 }
 
 fn play() -> Result<()> {
-    build_binaries()?;
-
-    let server_handle = launch_server(false);
-    let bot_handles = launch_bots()?;
-    let gui_handle = launch_gui(false);
-
-    for handle in bot_handles {
-        let _ = handle.join();
+    Recipe {
+        gui_mode: GuiMode::Player,
+        run_strategy: false,
     }
-
-    let _ = gui_handle.join();
-
-    match server_handle.join() {
-        Ok(Ok(true)) => eprintln!("Congratulations, you won!"),
-        Ok(Ok(false)) => eprintln!("You lost :("),
-        Ok(Err(err)) => eprintln!("Server error: {err}"),
-        Err(_) => eprintln!("Could not join server thread"),
-    }
-
-    Ok(())
+    .run()
 }
 
 fn watch() -> Result<()> {
-    build_binaries()?;
-
-    let server_handle = launch_server(true);
-    let bot_handles = launch_bots()?;
-    thread::sleep(Duration::from_millis(500));
-    let strategy_handle = launch_strategy();
-    let gui_handle = launch_gui(true);
-
-    for handle in bot_handles {
-        let _ = handle.join();
+    Recipe {
+        gui_mode: GuiMode::Spectator,
+        run_strategy: true,
     }
-
-    match strategy_handle.join() {
-        Ok(Ok(_)) => {}
-        Ok(Err(err)) => eprintln!("Strategy error: {err}"),
-        Err(_) => eprintln!("Could not join strategy thread"),
-    }
-
-    let _ = gui_handle.join();
-
-    match server_handle.join() {
-        Ok(Ok(true)) => eprintln!("Your strategy won!"),
-        Ok(Ok(false)) => eprintln!("Your strategy lost :("),
-        Ok(Err(err)) => eprintln!("Server error: {err}"),
-        Err(_) => eprintln!("Could not join server thread"),
-    }
-
-    Ok(())
+    .run()
 }
 
-fn test_once() -> Result<()> {
-    let server_handle = launch_server(false);
-    let bot_handles = launch_bots()?;
-    thread::sleep(Duration::from_millis(500));
-    let strategy_handle = launch_strategy();
-
-    for handle in bot_handles {
-        let _ = handle.join();
+fn debug() -> Result<()> {
+    Recipe {
+        gui_mode: GuiMode::Spectator,
+        run_strategy: false,
     }
-
-    match strategy_handle.join() {
-        Ok(Ok(_)) => {}
-        Ok(Err(err)) => eprintln!("Strategy error: {err}"),
-        Err(_) => eprintln!("Could not join strategy thread"),
-    }
-
-    match server_handle.join() {
-        Ok(Ok(true)) => Ok(()),
-        Ok(Ok(false)) => Err(anyhow!("Your strategy lost :(")),
-        Ok(Err(err)) => Err(anyhow!("Server error: {err}")),
-        Err(_) => Err(anyhow!("Could not join server thread")),
-    }
+    .run()
 }
 
 fn challenge() -> Result<()> {
-    build_binaries()?;
-
     for i in 1..=3 {
         eprintln!("Running test #{i}...");
-        test_once()?;
+
+        Recipe {
+            gui_mode: GuiMode::None,
+            run_strategy: true,
+        }
+        .run()?;
     }
     Ok(())
 }
@@ -199,6 +237,7 @@ fn main() -> Result<()> {
         Command::Base(cmd) => xtask_base::run_command(cmd),
         Command::Play => play(),
         Command::Watch => watch(),
+        Command::Debug => debug(),
         Command::Challenge => challenge(),
     }
 }

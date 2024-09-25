@@ -15,10 +15,12 @@ impl<T> From<Vec<T>> for PlayerIndexedVector<T> {
     }
 }
 
-impl<T: Default + Clone> PlayerIndexedVector<T> {
+impl<T: Default> PlayerIndexedVector<T> {
     pub fn new(player_amount: usize) -> Self {
         Self {
-            data: vec![Default::default(); player_amount],
+            data: std::iter::repeat_with(T::default)
+                .take(player_amount)
+                .collect(),
         }
     }
 }
@@ -42,8 +44,16 @@ impl<T> PlayerIndexedVector<T> {
             .map(|(i, p)| (NonZero::new(i + 1).unwrap(), p))
     }
 
+    pub fn iter_player_ids(&self) -> impl Iterator<Item = PlayerId> {
+        (0..self.len()).map(|i| PlayerId::new(i + 1).unwrap())
+    }
+
     pub fn map<E, F: FnMut(&T) -> E>(&self, f: F) -> PlayerIndexedVector<E> {
         PlayerIndexedVector::<E>::from(self.data.iter().map(f).collect::<Vec<_>>())
+    }
+
+    pub fn mapped<E, F: FnMut(T) -> E>(self, f: F) -> PlayerIndexedVector<E> {
+        PlayerIndexedVector::<E>::from(self.data.into_iter().map(f).collect::<Vec<_>>())
     }
 }
 

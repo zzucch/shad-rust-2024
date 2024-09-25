@@ -1,108 +1,115 @@
-use std::{
-    io::{self, BufReader, BufWriter},
-    net::{TcpListener, ToSocketAddrs},
-};
+use std::io;
 
 use log::*;
+use paperio_proto::{Command, Message};
 
 use crate::{
+    endpoint::Endpoint,
     game::{Game, PlayerId},
-    player_endpoint::PlayerEndpoint,
     player_vec::PlayerIndexedVector,
 };
 
 pub struct Server {
-    tcp_listener: TcpListener,
-    spectators_tcp_listener: TcpListener,
+    player_endpoints: PlayerIndexedVector<Box<dyn Endpoint>>,
+    spectator_endpoints: Vec<Box<dyn Endpoint>>,
 }
 
 impl Server {
-    pub fn new(addr: impl ToSocketAddrs, spec_addr: impl ToSocketAddrs) -> io::Result<Server> {
-        let tcp_listener = TcpListener::bind(addr)?;
-        let spectators_tcp_listener = TcpListener::bind(spec_addr)?;
-        Ok(Self {
-            tcp_listener,
-            spectators_tcp_listener,
-        })
+    pub fn new(
+        player_endpoints: PlayerIndexedVector<impl Endpoint + 'static>,
+        spectator_endpoints: impl IntoIterator<Item = impl Endpoint + 'static>,
+    ) -> Self {
+        Self {
+            player_endpoints: player_endpoints.mapped(|e| Box::new(e) as Box<dyn Endpoint>),
+            spectator_endpoints: spectator_endpoints
+                .into_iter()
+                .map(|e| Box::new(e) as Box<dyn Endpoint>)
+                .collect(),
+        }
     }
 
-    fn collect_players(listener: &mut TcpListener, amount: usize) -> Vec<PlayerEndpoint> {
-        listener
-            .incoming()
-            .filter_map(|stream| {
-                let stream = stream.ok()?;
-                let player_addr = stream.peer_addr().ok()?;
-                let reader = BufReader::new(stream.try_clone().ok()?);
-                let writer = BufWriter::new(stream);
-                let player = PlayerEndpoint::new(reader, writer);
-                info!("Player {player_addr} connected!");
-                Some(player)
-            })
-            .take(amount)
-            .collect::<Vec<PlayerEndpoint>>()
-    }
-
-    pub fn start(
-        &mut self,
-        ticks_amount: usize,
-        players_amount: usize,
-        spectators_amount: usize,
-    ) -> io::Result<PlayerId> {
-        info!("Starting server at {}", self.tcp_listener.local_addr()?);
-        let players = Self::collect_players(&mut self.tcp_listener, players_amount);
-        let mut players = PlayerIndexedVector::from(players);
-
-        let mut spectators =
-            Self::collect_players(&mut self.spectators_tcp_listener, spectators_amount);
-
-        let mut game = Game::new(players.len());
+    pub fn run(&mut self, ticks_amount: usize) -> io::Result<Option<PlayerId>> {
+        let mut game = Game::new(self.player_endpoints.len());
         let params = game.get_game_params();
-        for (i, p) in players.iter_mut() {
-            if let Err(err) = p.send_start_game(params) {
-                error!("Sending start-game-message to Player #{i}: {err}");
-            }
-        }
-        for s in &mut spectators {
-            let _ = s.send_start_game(params);
-        }
+
+        self.send_to_all(&Message::StartGame(params));
 
         for tick in 0..ticks_amount {
             debug!("tick #{tick}");
-            for (i, p) in players.iter_mut() {
-                if let Err(err) = p.send_tick(game.get_player_world(i)) {
-                    error!("Sending tick to Player #{i}: {err}");
-                }
-            }
-            for s in &mut spectators {
-                let _ = s.send_tick(game.get_spectator_world());
+
+            for player_id in self.player_endpoints.iter_player_ids() {
+                let world = game.get_player_world(player_id);
+                self.send_to_player(player_id, &Message::Tick(world));
             }
 
-            for (i, p) in players.iter_mut() {
-                match p.get_tick() {
-                    Ok(dir) => {
-                        game.try_change_direction(i, dir.command);
-                    }
-                    Err(err) => {
-                        error!("Getting command from Player #{i}: {err}")
-                    }
+            let spectator_world = game.get_spectator_world();
+            self.send_to_spectators(&Message::Tick(spectator_world));
+
+            for player_id in self.player_endpoints.iter_player_ids() {
+                let mb_command = self.try_get_player_command(player_id);
+                if let Some(Command::ChangeDirection(dir)) = mb_command {
+                    game.try_change_direction(player_id, dir);
                 }
             }
-            for s in &mut spectators {
-                let _ = s.get_tick();
-            }
+
+            self.sync_with_spectators();
 
             game.tick();
         }
-        for (i, p) in players.iter_mut() {
-            if let Err(err) = p.send_end_game() {
-                error!("Sending end-game-message to Player #{i}: {err}");
-            };
+
+        self.send_to_all(&Message::EndGame {});
+
+        let mb_leader_id = game.leader_id();
+        match mb_leader_id {
+            Some(player_id) => info!("Winner is Player #{player_id}!"),
+            None => info!("There is no winner (tie)"),
         }
-        for s in &mut spectators {
-            let _ = s.send_end_game();
+
+        Ok(mb_leader_id)
+    }
+
+    fn send_to_spectators(&mut self, message: &Message) {
+        for endpoint in self.spectator_endpoints.iter_mut() {
+            if let Err(err) = endpoint.send_message(message) {
+                error!("failed to send message to spectator: {err}");
+            }
         }
-        let winner = game.leader_id();
-        info!("Winner is Player #{winner}!");
-        Ok(winner)
+    }
+
+    fn send_to_player(&mut self, player_id: PlayerId, message: &Message) {
+        let endpoint = &mut self.player_endpoints[player_id];
+        if let Err(err) = endpoint.send_message(message) {
+            error!("failed to send message to Player #{player_id}: {err}");
+        }
+    }
+
+    fn send_to_players(&mut self, message: &Message) {
+        for player_id in self.player_endpoints.iter_player_ids() {
+            self.send_to_player(player_id, message);
+        }
+    }
+
+    fn send_to_all(&mut self, message: &Message) {
+        self.send_to_players(message);
+        self.send_to_spectators(message);
+    }
+
+    fn try_get_player_command(&mut self, player_id: PlayerId) -> Option<Command> {
+        let endpoint = &mut self.player_endpoints[player_id];
+        match endpoint.get_command() {
+            Ok(cmd) => Some(cmd),
+            Err(err) => {
+                error!("failed to get command from Player #{player_id}: {err}");
+                None
+            }
+        }
+    }
+
+    fn sync_with_spectators(&mut self) {
+        for endpoint in self.spectator_endpoints.iter_mut() {
+            if let Err(err) = endpoint.get_command() {
+                error!("failed to sync with spectator: {err}");
+            }
+        }
     }
 }
