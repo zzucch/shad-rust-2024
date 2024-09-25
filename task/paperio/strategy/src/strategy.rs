@@ -9,6 +9,12 @@ pub struct Strategy {
     continuous_useless_ticks: i32,
 }
 
+impl Default for Strategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Strategy {
     pub fn new() -> Self {
         Self {
@@ -32,13 +38,9 @@ impl Strategy {
 
         let new_best_rectangle = match &self.best_rectangle {
             Some(best_rectangle) => {
-                if contains && (self.continuous_useless_ticks < 3) {
-                    true
-                } else if contains && best_rectangle.is_inside(&me.territory) {
-                    true
-                } else {
-                    false
-                }
+                contains
+                    && ((self.continuous_useless_ticks < 3)
+                        || best_rectangle.is_inside(&me.territory))
             }
             None => true,
         };
@@ -110,9 +112,9 @@ impl Strategy {
     fn get_score(world: &World, cell: &Cell) -> i32 {
         let rectangle = Rectangle::new(&world.me().position, cell);
 
-        let cells_score = Self::get_cells_score(&world, &rectangle);
-        let danger = Self::get_danger_punishment(&world, &rectangle);
-        let elimination_bonus = Self::get_elimination_bonus(&world, &rectangle);
+        let cells_score = Self::get_cells_score(world, &rectangle);
+        let danger = Self::get_danger_punishment(world, &rectangle);
+        let elimination_bonus = Self::get_elimination_bonus(world, &rectangle);
         let save_punishment = if rectangle.is_inside(&world.me().territory) {
             100 * rectangle.get_perimeter()
         } else {
@@ -254,7 +256,7 @@ impl Rectangle {
         on_horizontal || on_vertical
     }
 
-    fn is_inside(&self, territory: &Vec<Cell>) -> bool {
+    fn is_inside(&self, territory: &[Cell]) -> bool {
         for x in self.corner_1_x..=self.corner_2_x {
             for y in self.corner_1_y..=self.corner_2_y {
                 let cell = Cell(x, y);
