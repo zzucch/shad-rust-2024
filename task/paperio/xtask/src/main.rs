@@ -59,9 +59,9 @@ fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
             .ignore_stderr()
             .ignore_status()
             .run()?;
+
             Ok(())
         }));
-        thread::sleep(Duration::from_millis(100));
     }
     Ok(handles)
 }
@@ -71,7 +71,7 @@ fn launch_strategy() -> JoinHandle<Result<()>> {
         let strategy_sh = Shell::new()?;
         cmd!(
             strategy_sh,
-            "cargo run --package paperio-strategy --release -- 8000"
+            "cargo run --package paperio-strategy --release -- 8004"
         )
         .run()?;
         Ok(())
@@ -81,10 +81,18 @@ fn launch_strategy() -> JoinHandle<Result<()>> {
 fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
     thread::spawn(move || -> Result<()> {
         let gui_sh = Shell::new()?;
-        cmd!(gui_sh, "cargo run --package paperio-gui --release --")
-            .arg("-p")
-            .arg(if is_spectator { "8001" } else { "8000" })
-            .run()?;
+
+        let (port, spectator_arg) = if is_spectator {
+            ("8001", &["--spectator"] as &[_])
+        } else {
+            ("8004", &[] as &[_])
+        };
+        cmd!(
+            gui_sh,
+            "cargo run --package paperio-gui --release -- -p {port} {spectator_arg...}"
+        )
+        .run()?;
+
         Ok(())
     })
 }
@@ -92,15 +100,21 @@ fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
 fn launch_server(with_spectator: bool) -> JoinHandle<Result<bool>> {
     let handle = thread::spawn(move || -> Result<bool> {
         let server_sh = Shell::new()?;
-        let mut cmd = cmd!(server_sh, "cargo run --release --package paperio-server --");
+
+        let mut cmd = cmd!(
+            server_sh,
+            "cargo run --release --package paperio-server -- --p4 8004"
+        );
         if with_spectator {
-            cmd = cmd.arg("-s").arg("1");
+            cmd = cmd.arg("--spectator-count").arg("1");
         }
+
         let output = cmd.output()?;
         let output = String::from_utf8(output.stderr)?;
         let is_winner = output.lines().any(|l| l.contains("Winner is Player #4"));
         Ok(is_winner)
     });
+
     thread::sleep(Duration::from_millis(100));
     handle
 }
@@ -133,7 +147,6 @@ fn watch() -> Result<()> {
 
     let server_handle = launch_server(true);
     let bot_handles = launch_bots()?;
-    thread::sleep(Duration::from_millis(500));
     let strategy_handle = launch_strategy();
     let gui_handle = launch_gui(true);
 
@@ -162,7 +175,6 @@ fn watch() -> Result<()> {
 fn test_once() -> Result<()> {
     let server_handle = launch_server(false);
     let bot_handles = launch_bots()?;
-    thread::sleep(Duration::from_millis(500));
     let strategy_handle = launch_strategy();
 
     for handle in bot_handles {
@@ -189,6 +201,7 @@ fn challenge() -> Result<()> {
     for i in 1..=3 {
         eprintln!("Running test #{i}...");
         test_once()?;
+        eprintln!("Your strategy won!");
     }
     Ok(())
 }

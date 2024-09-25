@@ -27,7 +27,7 @@ pub struct GameParams {
     pub y_cells_count: u32,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct World {
     pub players: HashMap<PlayerId, Player>,
     pub tick_num: u32,
@@ -42,7 +42,6 @@ pub struct Player {
     pub position: Cell,
     pub lines: Vec<Cell>,
     pub direction: Option<Direction>,
-    pub has_lost: bool,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy, FromPrimitive, EnumIter)]
@@ -55,9 +54,9 @@ pub enum Direction {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CommandMessage {
-    pub tick_num: u32,
-    pub command: Direction,
+pub enum Command {
+    ChangeDirection(Direction),
+    NoOp,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Hash, PartialEq, Eq, Debug)]
@@ -200,8 +199,7 @@ mod test {
                             "territory": [[0, 0], [0, 1]],
                             "position": [0, 1],
                             "lines": [[1, 0], [1, 1]],
-                            "direction": "left",
-                            "has_lost": true
+                            "direction": "left"
                         }
                     },
                     "tick_num": 748
@@ -221,7 +219,6 @@ mod test {
                         position: Cell(0, 1),
                         lines: vec![Cell(1, 0), Cell(1, 1)],
                         direction: Some(Direction::Left),
-                        has_lost: true,
                     }
                 )]
                 .into_iter()

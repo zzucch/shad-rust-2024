@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use paperio_proto::{
-    traits::{ProtoRead, ProtoWrite},
-    CommandMessage, Message,
+    traits::{JsonRead, JsonWrite},
+    Command, Message,
 };
 use paperio_strategy::strategy::Strategy;
 
@@ -14,19 +14,15 @@ use std::{
 fn run(reader: impl Read, mut writer: impl Write) {
     let mut reader = BufReader::new(reader);
 
-    let Ok(Message::StartGame(_)) = Message::read(&mut reader) else {
+    let Ok(Message::StartGame(_)) = reader.read_message() else {
         panic!("expected the first message to be 'start_game'");
     };
 
     let mut strategy = Strategy::new();
-    while let Ok(Message::Tick(tick_params)) = Message::read(&mut reader) {
-        let tick_num = tick_params.tick_num;
+    while let Ok(Message::Tick(tick_params)) = reader.read_message() {
         let direction = strategy.on_tick(tick_params);
-        let msg = CommandMessage {
-            tick_num,
-            command: direction,
-        };
-        msg.write(&mut writer).unwrap();
+        let msg = Command::ChangeDirection(direction);
+        writer.write_command(&msg).unwrap();
         writer.flush().unwrap();
     }
 }

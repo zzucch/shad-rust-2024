@@ -14,8 +14,8 @@ use clap::Parser;
 use eframe::egui;
 use egui::{pos2, vec2, Color32, Rect, Vec2};
 use paperio_proto::{
-    traits::{ProtoRead, ProtoWrite},
-    Cell, CommandMessage, Direction, GameParams, Message, PlayerId, World,
+    traits::{JsonRead, JsonWrite},
+    Cell, Command, Direction, GameParams, Message, PlayerId, World,
 };
 
 #[derive(Parser)]
@@ -27,6 +27,8 @@ struct Arguments {
     port: u16,
     #[arg(short, long, default_value_t = 120)]
     tick_delay_ms: u64,
+    #[arg(short, long, action)]
+    spectator: bool,
 }
 
 fn main() {
@@ -43,6 +45,7 @@ fn main() {
         msg_to_gui,
         atomic_direction_store.clone(),
         args.tick_delay_ms,
+        args.spectator,
     );
 
     // run gui in current thread
@@ -70,30 +73,32 @@ fn spawn_cmd_thread(
     msg_to_gui: mpsc::Sender<Message>,
     atomic_direction_store: AtomicDirection,
     tick_delay_ms: u64,
+    is_spectator: bool,
 ) -> thread::JoinHandle<anyhow::Result<()>> {
     thread::spawn(move || -> anyhow::Result<()> {
         let mut reader = BufReader::new(stream.try_clone()?);
         let mut writer = BufWriter::new(stream);
 
         // receive `GameParams` msg
-        if let Ok(msg) = Message::read(&mut reader) {
+        if let Ok(msg) = reader.read_message() {
             msg_to_gui.send(msg)?;
         } else {
             panic!("Could not read first message")
         };
 
         // receive tick msgs
-        while let Ok(msg) = Message::read(&mut reader) {
+        while let Ok(msg) = reader.read_message() {
             msg_to_gui.send(msg)?;
 
             thread::sleep(Duration::from_millis(tick_delay_ms));
 
-            let direction = atomic_direction_store.load();
-            let msg = CommandMessage {
-                tick_num: 0,
-                command: direction,
+            let command = if is_spectator {
+                Command::ChangeDirection(atomic_direction_store.load())
+            } else {
+                Command::NoOp
             };
-            msg.write(&mut writer)?;
+
+            writer.write_command(&command)?;
             writer.flush()?;
         }
         Ok(())
@@ -234,10 +239,8 @@ impl GameField {
             }
         }
         for (id, player) in &self.world.players {
-            if !player.has_lost {
-                let color = head_color(id);
-                draw_cell(player.position, color)
-            }
+            let color = head_color(id);
+            draw_cell(player.position, color)
         }
     }
 }

@@ -1,41 +1,39 @@
 use std::io::{self, BufRead, Write};
 
-use crate::{CommandMessage, Message};
+use crate::{Command, Message};
 
-pub trait ProtoRead: Sized {
-    fn read(reader: &mut impl BufRead) -> io::Result<Self>;
+pub trait JsonRead {
+    fn read_message(&mut self) -> io::Result<Message>;
+    fn read_command(&mut self) -> io::Result<Command>;
 }
 
-pub trait ProtoWrite {
-    fn write(&self, writer: &mut impl Write) -> io::Result<()>;
+pub trait JsonWrite {
+    fn write_message(&mut self, message: &Message) -> io::Result<()>;
+    fn write_command(&mut self, command: &Command) -> io::Result<()>;
 }
 
-impl ProtoRead for Message {
-    fn read(reader: &mut impl BufRead) -> io::Result<Self> {
+impl<T: BufRead> JsonRead for T {
+    fn read_message(&mut self) -> io::Result<Message> {
         let mut line = String::new();
-        reader.read_line(&mut line)?;
+        self.read_line(&mut line)?;
+        serde_json::from_str(&line).map_err(|err| err.into())
+    }
+
+    fn read_command(&mut self) -> io::Result<Command> {
+        let mut line = String::new();
+        self.read_line(&mut line)?;
         serde_json::from_str(&line).map_err(|err| err.into())
     }
 }
 
-impl ProtoWrite for Message {
-    fn write(&self, mut writer: &mut impl Write) -> io::Result<()> {
-        serde_json::to_writer(&mut writer, &self)?;
-        writeln!(writer)
+impl<T: Write> JsonWrite for T {
+    fn write_message(&mut self, message: &Message) -> io::Result<()> {
+        serde_json::to_writer(&mut *self, &message)?;
+        self.write_all(b"\n")
     }
-}
 
-impl ProtoRead for CommandMessage {
-    fn read(reader: &mut impl BufRead) -> io::Result<Self> {
-        let mut line = String::new();
-        reader.read_line(&mut line)?;
-        serde_json::from_str(&line).map_err(|err| err.into())
-    }
-}
-
-impl ProtoWrite for CommandMessage {
-    fn write(&self, mut writer: &mut impl Write) -> io::Result<()> {
-        serde_json::to_writer(&mut writer, &self)?;
-        writeln!(writer)
+    fn write_command(&mut self, command: &Command) -> io::Result<()> {
+        serde_json::to_writer(&mut *self, &command)?;
+        self.write_all(b"\n")
     }
 }
