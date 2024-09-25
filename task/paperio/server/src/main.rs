@@ -4,7 +4,7 @@ mod game_field;
 mod player_vec;
 mod server;
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use clap::Parser;
 use endpoint::{Endpoint, JsonEndpoint};
 use game::PlayerId;
@@ -41,7 +41,7 @@ struct Arguments {
     #[arg(long = "p4")]
     player_four_port: Option<u16>,
 
-    #[arg(short = 'n', long, default_value_t = 4, value_parser = 1..=4)]
+    #[arg(short = 'n', long, default_value_t = 4)]
     player_count: usize,
 
     #[arg(short, long, default_value_t = 300)]
@@ -155,11 +155,16 @@ fn get_endpoints(
     }
 
     let players = players.mapped(|e| e.unwrap());
+
     Ok((players, spectators))
 }
 
 fn main() -> Result<()> {
     let args = Arguments::parse();
+    ensure!(
+        (1..=4).contains(&args.player_count),
+        "player count should be from 1 to 4"
+    );
 
     stderrlog::new()
         .verbosity(args.log_level)
