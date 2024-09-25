@@ -2,8 +2,11 @@
 
 В данной задаче мы предлагаем вам написать бота для игры PaperIO.
 
-Перед тем, как читать дальше, попробуйте сами сыграть в игру, вызвав `cargo xtask play`.
-Вы играете за зелёный квадратик в левом нижнем углу, управление стрелками.
+Перед тем, как читать дальше, попробуйте сами сыграть в игру, вызвав `cargo xtask play`.  
+Вы играете за зелёный квадратик в левом нижнем углу, управление стрелками.  
+Для GUI используется [`eframe`](https://docs.rs/eframe/latest/eframe/), поэтому на Linux
+вам возможно потребуется установить зависимости, как написано [здесь](https://github.com/emilk/eframe_template?tab=readme-ov-file#testing-locally):  
+`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
 
 ## 1. Правила игры
 
