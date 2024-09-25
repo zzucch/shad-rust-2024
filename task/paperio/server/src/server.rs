@@ -61,8 +61,8 @@ impl Server {
 
         let mb_leader_id = game.leader_id();
         match mb_leader_id {
-            Some(player_id) => info!("Winner is Player #{player_id}!"),
-            None => info!("There is no winner (tie)"),
+            Some(player_id) => println!("Winner is Player #{player_id}!"),
+            None => println!("There is no winner (tie)"),
         }
 
         Ok(mb_leader_id)

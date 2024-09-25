@@ -4,6 +4,7 @@
 **/target
 **/test_artifacts
 **/vendor
+**/*.log
 
 **/*.pyc
 

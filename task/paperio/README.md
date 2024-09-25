@@ -2,8 +2,11 @@
 
 В данной задаче мы предлагаем вам написать бота для игры PaperIO.
 
-Перед тем, как читать дальше, попробуйте сами сыграть в игру, вызвав `cargo xtask play`.
-Вы играете за зелёный квадратик в левом нижнем углу, управление стрелками.
+Перед тем, как читать дальше, попробуйте сами сыграть в игру, вызвав `cargo xtask play`.  
+Вы играете за зелёный квадратик в левом нижнем углу, управление стрелками.  
+Для GUI используется [`eframe`](https://docs.rs/eframe/latest/eframe/), поэтому на Linux
+вам возможно потребуется установить зависимости, как написано [здесь](https://github.com/emilk/eframe_template?tab=readme-ov-file#testing-locally):  
+`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
 
 ## 1. Правила игры
 
@@ -93,6 +96,8 @@
 
 ## 5. Отладка
 
+Все рецепты `xtask` печатают логи вашей стратегии в `logs/strategy.log`.
+
 Чтобы запустить свою стратегию под отладчиком, проделайте следующее:
 
 * В VS Code нажмите Ctrl+Shift+P, введите `Debug: Add configuration...` -> `LLDB`.
@@ -134,8 +139,8 @@
 Вы могли заметить, что встроенные стратегии лежат в папке `bots/` как wasm-файлы. Вы тоже можете скомпилировать свою стратегию в wasm и поделиться ей с друзьями.
 Для этого в папке со своим решением `strategy`:
 
-1. Поставьте необходимые инструменты сборки: `rustup target add wasm32-wasi`
-2. Соберите свою стратегию: `cargo build --release --target wasm32-wasi`
+1. Поставьте необходимые инструменты сборки: `rustup target add wasm32-wasip1`
+2. Соберите свою стратегию: `cargo build --release --target wasm32-wasip1`
 3. Артефакт сборки будет лежать по пути `target/wasm32-wasi/release/paperio-bot.wasm`
 
 Для запуска такой стратегии в папке `wasm-launcher` выполните `cargo run --release -- <путь до wasm файла>`.

@@ -1,11 +1,13 @@
 use std::{
+    fs, process,
     thread::{self, JoinHandle},
     time::Duration,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use xshell::{cmd, Shell};
+use xtask_util::get_cwd_task_path;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -115,53 +117,73 @@ impl Recipe {
     fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
         let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
 
-        let bots = ["bots/fool.wasm", "bots/coward.wasm", "bots/aggressive.wasm"];
+        let bot_names = ["fool", "coward", "aggressive"];
 
-        for bot in bots {
-            handles.push(thread::spawn(move || -> Result<()> {
-                let bot_sh = Shell::new()?;
-                cmd!(
-                    bot_sh,
-                    "cargo run --package paperio-wasm-launcher --release --"
-                )
-                .arg(bot)
-                .ignore_stdout()
-                .ignore_stderr()
-                .ignore_status()
-                .run()?;
+        for bot_name in bot_names {
+            let bot_path = get_cwd_task_path()?
+                .join("bots")
+                .join(format!("{bot_name}.wasm"));
+
+            let handle = thread::spawn(move || -> Result<()> {
+                let mut cmd = process::Command::new("cargo");
+                cmd.args([
+                    "run",
+                    "--package",
+                    "paperio-wasm-launcher",
+                    "--release",
+                    "--",
+                ])
+                .arg(bot_path);
+
+                Self::run_with_log(cmd, &format!("bot_{bot_name}"))?;
 
                 Ok(())
-            }));
+            });
+
+            handles.push(handle);
         }
         Ok(handles)
     }
 
     fn launch_strategy() -> JoinHandle<Result<()>> {
         thread::spawn(|| -> Result<()> {
-            let strategy_sh = Shell::new()?;
-            cmd!(
-                strategy_sh,
-                "cargo run --package paperio-strategy --release -- 8004"
-            )
-            .run()?;
+            let mut cmd = process::Command::new("cargo");
+            cmd.args([
+                "run",
+                "--package",
+                "paperio-strategy",
+                "--release",
+                "--",
+                "8004",
+            ]);
+
+            Self::run_with_log(cmd, "strategy")?;
+
             Ok(())
         })
     }
 
     fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
         thread::spawn(move || -> Result<()> {
-            let gui_sh = Shell::new()?;
-
             let (port, spectator_arg) = if is_spectator {
                 ("8001", &["--spectator"] as &[_])
             } else {
                 ("8004", &[] as &[_])
             };
-            cmd!(
-                gui_sh,
-                "cargo run --package paperio-gui --release -- -p {port} {spectator_arg...}"
-            )
-            .run()?;
+
+            let mut cmd = process::Command::new("cargo");
+            cmd.args([
+                "run",
+                "--package",
+                "paperio-gui",
+                "--release",
+                "--",
+                "-p",
+                port,
+            ])
+            .args(spectator_arg);
+
+            Self::run_with_log(cmd, "gui")?;
 
             Ok(())
         })
@@ -169,20 +191,24 @@ impl Recipe {
 
     fn launch_server(with_spectator: bool) -> JoinHandle<Result<Outcome>> {
         let handle = thread::spawn(move || -> Result<Outcome> {
-            let server_sh = Shell::new()?;
+            let mut cmd = process::Command::new("cargo");
+            cmd.args([
+                "run",
+                "--package",
+                "paperio-server",
+                "--release",
+                "--",
+                "--p4",
+                "8004",
+            ]);
 
-            let mut cmd = cmd!(
-                server_sh,
-                "cargo run --release --package paperio-server -- --p4 8004"
-            );
             if with_spectator {
-                cmd = cmd.arg("--spectator-count").arg("1");
+                cmd.args(["--spectator-count", "1"]);
             }
 
-            let output = cmd.output()?;
-            let output = String::from_utf8(output.stderr)?;
+            let stdout = Self::run_with_log(cmd, "server")?;
 
-            if output.lines().any(|l| l.contains("Winner is Player #4")) {
+            if String::from_utf8_lossy(&stdout).contains("Winner is Player #4") {
                 Ok(Outcome::Won)
             } else {
                 Ok(Outcome::Lost)
@@ -191,6 +217,29 @@ impl Recipe {
 
         thread::sleep(Duration::from_millis(500));
         handle
+    }
+
+    fn run_with_log(mut cmd: process::Command, log_name: &str) -> Result<Vec<u8>> {
+        let dir_path = get_cwd_task_path()?.join("log");
+        if !dir_path.exists() {
+            fs::create_dir(&dir_path).context("failed to create log dir")?;
+        }
+
+        let file_path = dir_path.join(format!("{log_name}.log"));
+        let log_file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&file_path)
+            .with_context(|| format!("failed to create {file_path:?}"))?;
+
+        eprintln!("Running: {cmd:?}");
+        let output = cmd
+            .stderr(log_file)
+            .output()
+            .with_context(|| format!("failed to run {cmd:?}"))?;
+
+        eprintln!("Terminated: {cmd:?}");
+        Ok(output.stdout)
     }
 }
 
