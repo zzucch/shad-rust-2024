@@ -38,21 +38,17 @@ impl Server {
             debug!("tick #{tick}");
 
             for player_id in self.player_endpoints.iter_player_ids() {
-                if !game.has_lost(player_id) {
-                    let world = game.get_player_world(player_id);
-                    self.send_to_player(player_id, &Message::Tick(world));
-                }
+                let world = game.get_player_world(player_id);
+                self.send_to_player(player_id, &Message::Tick(world));
             }
 
             let spectator_world = game.get_spectator_world();
             self.send_to_spectators(&Message::Tick(spectator_world));
 
             for player_id in self.player_endpoints.iter_player_ids() {
-                if !game.has_lost(player_id) {
-                    let mb_command = self.try_get_player_command(player_id);
-                    if let Some(Command::ChangeDirection(dir)) = mb_command {
-                        game.try_change_direction(player_id, dir);
-                    }
+                let mb_command = self.try_get_player_command(player_id);
+                if let Some(Command::ChangeDirection(dir)) = mb_command {
+                    game.try_change_direction(player_id, dir);
                 }
             }
 
