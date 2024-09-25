@@ -223,11 +223,24 @@ impl Game {
         self.get_player_world(NonZero::new(usize::MAX).unwrap())
     }
 
-    pub fn leader_id(&self) -> PlayerId {
-        self.players
+    pub fn leader_id(&self) -> Option<PlayerId> {
+        let player_id = self
+            .players
             .iter()
             .max_by_key(|(_, player)| player.score)
             .unwrap()
-            .0
+            .0;
+        let leader_score = self.players[player_id].score;
+        if self
+            .players
+            .iter()
+            .filter(|p| p.1.score == leader_score)
+            .count()
+            > 1
+        {
+            None
+        } else {
+            Some(player_id)
+        }
     }
 }

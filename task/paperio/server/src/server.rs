@@ -28,7 +28,7 @@ impl Server {
         }
     }
 
-    pub fn run(&mut self, ticks_amount: usize) -> io::Result<PlayerId> {
+    pub fn run(&mut self, ticks_amount: usize) -> io::Result<Option<PlayerId>> {
         let mut game = Game::new(self.player_endpoints.len());
         let params = game.get_game_params();
 
@@ -63,9 +63,13 @@ impl Server {
 
         self.send_to_all(&Message::EndGame {});
 
-        let winner = game.leader_id();
-        info!("Winner is Player #{winner}!");
-        Ok(winner)
+        let mb_leader_id = game.leader_id();
+        match mb_leader_id {
+            Some(player_id) => info!("Winner is Player #{player_id}!"),
+            None => info!("There is no winner (tie)"),
+        }
+
+        Ok(mb_leader_id)
     }
 
     fn send_to_spectators(&mut self, message: &Message) {

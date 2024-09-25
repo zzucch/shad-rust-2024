@@ -92,7 +92,7 @@ fn spawn_cmd_thread(
 
             thread::sleep(Duration::from_millis(tick_delay_ms));
 
-            let command = if is_spectator {
+            let command = if !is_spectator {
                 Command::ChangeDirection(atomic_direction_store.load())
             } else {
                 Command::NoOp
