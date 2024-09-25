@@ -174,11 +174,15 @@ impl Game {
         }
 
         for (player_id, status) in self.player_status.iter_mut() {
-            if *status == PlayerStatus::Losing {
-                self.field.remove_player(player_id);
-                *status = PlayerStatus::Lost;
-            } else {
-                self.players[player_id].position = next_position[player_id];
+            match *status {
+                PlayerStatus::Alive => {
+                    self.players[player_id].position = next_position[player_id];
+                }
+                PlayerStatus::Losing => {
+                    self.field.remove_player(player_id);
+                    *status = PlayerStatus::Lost;
+                }
+                PlayerStatus::Lost => {}
             }
         }
 
@@ -189,7 +193,6 @@ impl Game {
         let players = self
             .players
             .iter()
-            .filter(|(id, _)| !self.has_lost(*id))
             .map(|(id, player)| {
                 let str_id = if id == i {
                     "i".to_string()
@@ -204,6 +207,7 @@ impl Game {
                     position: player.position,
                     lines: lines.iter().copied().collect(),
                     direction: Some(player.direction),
+                    has_lost: self.has_lost(id),
                 };
 
                 (str_id, proto_player)

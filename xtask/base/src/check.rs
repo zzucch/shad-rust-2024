@@ -20,7 +20,7 @@ pub struct CheckArgs {
     pub task_path: Vec<PathBuf>,
 }
 
-fn make_package_args<'a>(package: &'a Option<String>) -> Vec<&'a str> {
+fn make_package_args(package: &Option<String>) -> Vec<&str> {
     match package {
         Some(package) => vec!["--package", package],
         None => vec![],

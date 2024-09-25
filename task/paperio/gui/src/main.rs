@@ -239,8 +239,10 @@ impl GameField {
             }
         }
         for (id, player) in &self.world.players {
-            let color = head_color(id);
-            draw_cell(player.position, color)
+            if !player.has_lost {
+                let color = head_color(id);
+                draw_cell(player.position, color)
+            }
         }
     }
 }

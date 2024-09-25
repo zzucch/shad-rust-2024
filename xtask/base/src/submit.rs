@@ -49,7 +49,7 @@ fn uncommitted_changes(repo: &Repository, task_name: &str) -> Result<Vec<PathBuf
 fn get_student_login(repo: &Repository, remote: &str) -> Result<String> {
     let remote = match repo.find_remote(remote) {
         Ok(remote) => remote,
-        Err(err) if matches!(err, gix::remote::find::existing::Error::NotFound { .. }) => {
+        Err(gix::remote::find::existing::Error::NotFound { .. }) => {
             bail!(
                 "remote '{}' does not exist. Please create it according to the course tutorial.",
                 STUDENT_REMOTE_NAME
