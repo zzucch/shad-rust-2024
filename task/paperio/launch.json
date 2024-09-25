@@ -4,20 +4,19 @@
 		{
 			"type": "lldb",
 			"request": "launch",
-			"name": "Debug executable 'paperio-bot'",
+			"name": "Debug executable 'paperio-strategy'",
 			"cargo": {
 				"args": [
 					"build",
-					"--bin=paperio-bot",
-					"--package=paperio"
+					"--package=paperio-strategy"
 				],
 				"filter": {
-					"name": "paperio-bot",
+					"name": "paperio-strategy",
 					"kind": "bin"
 				}
 			},
 			"args": [
-				"8000"
+				"8004"
 			],
 			"cwd": "${workspaceFolder}"
 		}

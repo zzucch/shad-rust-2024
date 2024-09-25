@@ -25,6 +25,9 @@ enum Command {
     /// Run your strategy and gui to look how it plays.
     Watch,
 
+    /// Wait for your strategy to connect on port 8004 and then run the game.
+    Debug,
+
     /// Run you strategy three times against bots (no gui).
     Challenge,
 }
@@ -172,6 +175,29 @@ fn watch() -> Result<()> {
     Ok(())
 }
 
+fn debug() -> Result<()> {
+    build_binaries()?;
+
+    let server_handle = launch_server(true);
+    let bot_handles = launch_bots()?;
+    let gui_handle = launch_gui(true);
+
+    for handle in bot_handles {
+        let _ = handle.join();
+    }
+
+    let _ = gui_handle.join();
+
+    match server_handle.join() {
+        Ok(Ok(true)) => eprintln!("Your strategy won!"),
+        Ok(Ok(false)) => eprintln!("Your strategy lost :("),
+        Ok(Err(err)) => eprintln!("Server error: {err}"),
+        Err(_) => eprintln!("Could not join server thread"),
+    }
+
+    Ok(())
+}
+
 fn test_once() -> Result<()> {
     let server_handle = launch_server(false);
     let bot_handles = launch_bots()?;
@@ -212,6 +238,7 @@ fn main() -> Result<()> {
         Command::Base(cmd) => xtask_base::run_command(cmd),
         Command::Play => play(),
         Command::Watch => watch(),
+        Command::Debug => debug(),
         Command::Challenge => challenge(),
     }
 }
