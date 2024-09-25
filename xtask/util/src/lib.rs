@@ -21,6 +21,19 @@ pub fn get_cwd_repo_path() -> Result<PathBuf> {
         .context("looks like we are in a bare git repo")
 }
 
+pub fn get_cwd_task_path() -> Result<PathBuf> {
+    let mut path = std::env::current_dir().context("failed to get cwd")?;
+    loop {
+        if path.join(".check.toml").exists() {
+            return Ok(path);
+        }
+        path = path
+            .parent()
+            .context("failed to locate current task directory")?
+            .to_owned();
+    }
+}
+
 pub fn read_config<T>(path: impl AsRef<Path>) -> Result<T>
 where
     for<'a> T: Deserialize<'a>,
