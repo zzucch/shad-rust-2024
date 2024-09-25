@@ -181,6 +181,7 @@ impl Recipe {
 
             let output = cmd.output()?;
             let output = String::from_utf8(output.stderr)?;
+            eprintln!("{output}");
 
             if output.lines().any(|l| l.contains("Winner is Player #4")) {
                 Ok(Outcome::Won)
