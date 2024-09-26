@@ -14,6 +14,10 @@ use xtask_util::get_cwd_task_path;
 struct Args {
     #[command(subcommand)]
     cmd: Command,
+
+    #[arg(long, action)]
+    /// Don't capture logs to log/.
+    no_logs: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -49,6 +53,7 @@ enum Outcome {
 struct Recipe {
     gui_mode: GuiMode,
     run_strategy: bool,
+    capture_logs: bool,
 }
 
 impl Recipe {
@@ -56,20 +61,20 @@ impl Recipe {
         Self::build_binaries()?;
 
         let server_handle = match self.gui_mode {
-            GuiMode::Spectator => Self::launch_server(true),
-            _ => Self::launch_server(false),
+            GuiMode::Spectator => Self::launch_server(true, self.capture_logs),
+            _ => Self::launch_server(false, self.capture_logs),
         };
 
-        let bot_handles = Self::launch_bots()?;
+        let bot_handles = Self::launch_bots(self.capture_logs)?;
 
         let gui_handle = match self.gui_mode {
             GuiMode::None => None,
-            GuiMode::Spectator => Some(Self::launch_gui(true)),
-            GuiMode::Player => Some(Self::launch_gui(false)),
+            GuiMode::Spectator => Some(Self::launch_gui(true, self.capture_logs)),
+            GuiMode::Player => Some(Self::launch_gui(false, self.capture_logs)),
         };
 
         let strategy_handle = if self.run_strategy {
-            Some(Self::launch_strategy())
+            Some(Self::launch_strategy(self.capture_logs))
         } else {
             None
         };
@@ -114,12 +119,12 @@ impl Recipe {
         Ok(())
     }
 
-    fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
+    fn launch_bots(capture_logs: bool) -> Result<Vec<JoinHandle<Result<()>>>> {
         let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
 
         let bot_names = ["coward", "coward", "coward"];
 
-        for bot_name in bot_names {
+        for (bot_id, bot_name) in bot_names.iter().enumerate() {
             let bot_path = get_cwd_task_path()?
                 .join("bots")
                 .join(format!("{bot_name}.wasm"));
@@ -135,7 +140,12 @@ impl Recipe {
                 ])
                 .arg(bot_path);
 
-                Self::run_with_log(cmd, &format!("bot_{bot_name}"))?;
+                let log_name = if capture_logs {
+                    Some(format!("bot_{bot_id}"))
+                } else {
+                    None
+                };
+                Self::run_cmd(cmd, log_name)?;
 
                 Ok(())
             });
@@ -145,8 +155,8 @@ impl Recipe {
         Ok(handles)
     }
 
-    fn launch_strategy() -> JoinHandle<Result<()>> {
-        thread::spawn(|| -> Result<()> {
+    fn launch_strategy(capture_logs: bool) -> JoinHandle<Result<()>> {
+        thread::spawn(move || -> Result<()> {
             let mut cmd = process::Command::new("cargo");
             cmd.args([
                 "run",
@@ -157,13 +167,14 @@ impl Recipe {
                 "8004",
             ]);
 
-            Self::run_with_log(cmd, "strategy")?;
+            let log_name = if capture_logs { Some("strategy") } else { None };
+            Self::run_cmd(cmd, log_name)?;
 
             Ok(())
         })
     }
 
-    fn launch_gui(is_spectator: bool) -> JoinHandle<Result<()>> {
+    fn launch_gui(is_spectator: bool, capture_logs: bool) -> JoinHandle<Result<()>> {
         thread::spawn(move || -> Result<()> {
             let (port, spectator_arg) = if is_spectator {
                 ("8001", &["--spectator"] as &[_])
@@ -183,13 +194,14 @@ impl Recipe {
             ])
             .args(spectator_arg);
 
-            Self::run_with_log(cmd, "gui")?;
+            let log_name = if capture_logs { Some("gui") } else { None };
+            Self::run_cmd(cmd, log_name)?;
 
             Ok(())
         })
     }
 
-    fn launch_server(with_spectator: bool) -> JoinHandle<Result<Outcome>> {
+    fn launch_server(with_spectator: bool, capture_logs: bool) -> JoinHandle<Result<Outcome>> {
         let handle = thread::spawn(move || -> Result<Outcome> {
             let mut cmd = process::Command::new("cargo");
             cmd.args([
@@ -206,7 +218,8 @@ impl Recipe {
                 cmd.args(["--spectator-count", "1"]);
             }
 
-            let stdout = Self::run_with_log(cmd, "server")?;
+            let log_name = if capture_logs { Some("server") } else { None };
+            let stdout = Self::run_cmd(cmd, log_name)?;
 
             if String::from_utf8_lossy(&stdout).contains("Winner is Player #4") {
                 Ok(Outcome::Won)
@@ -219,22 +232,25 @@ impl Recipe {
         handle
     }
 
-    fn run_with_log(mut cmd: process::Command, log_name: &str) -> Result<Vec<u8>> {
-        let dir_path = get_cwd_task_path()?.join("log");
-        if !dir_path.exists() {
-            fs::create_dir(&dir_path).context("failed to create log dir")?;
-        }
+    fn run_cmd(mut cmd: process::Command, log_name: Option<impl AsRef<str>>) -> Result<Vec<u8>> {
+        if let Some(log_name) = log_name {
+            let dir_path = get_cwd_task_path()?.join("log");
+            if !dir_path.exists() {
+                fs::create_dir(&dir_path).context("failed to create log dir")?;
+            }
 
-        let file_path = dir_path.join(format!("{log_name}.log"));
-        let log_file = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&file_path)
-            .with_context(|| format!("failed to create {file_path:?}"))?;
+            let file_path = dir_path.join(format!("{}.log", log_name.as_ref()));
+            let log_file = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&file_path)
+                .with_context(|| format!("failed to create {file_path:?}"))?;
+
+            cmd.stderr(log_file);
+        }
 
         eprintln!("Running: {cmd:?}");
         let output = cmd
-            .stderr(log_file)
             .output()
             .with_context(|| format!("failed to run {cmd:?}"))?;
 
@@ -243,37 +259,41 @@ impl Recipe {
     }
 }
 
-fn play() -> Result<()> {
+fn play(no_logs: bool) -> Result<()> {
     Recipe {
         gui_mode: GuiMode::Player,
         run_strategy: false,
+        capture_logs: !no_logs,
     }
     .run()
 }
 
-fn watch() -> Result<()> {
+fn watch(no_logs: bool) -> Result<()> {
     Recipe {
         gui_mode: GuiMode::Spectator,
         run_strategy: true,
+        capture_logs: !no_logs,
     }
     .run()
 }
 
-fn debug() -> Result<()> {
+fn debug(no_logs: bool) -> Result<()> {
     Recipe {
         gui_mode: GuiMode::Spectator,
         run_strategy: false,
+        capture_logs: !no_logs,
     }
     .run()
 }
 
-fn challenge() -> Result<()> {
+fn challenge(no_logs: bool) -> Result<()> {
     for i in 1..=3 {
         eprintln!("Running test #{i}...");
 
         Recipe {
             gui_mode: GuiMode::None,
             run_strategy: true,
+            capture_logs: !no_logs,
         }
         .run()?;
     }
@@ -284,9 +304,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
     match args.cmd {
         Command::Base(cmd) => xtask_base::run_command(cmd),
-        Command::Play => play(),
-        Command::Watch => watch(),
-        Command::Debug => debug(),
-        Command::Challenge => challenge(),
+        Command::Play => play(args.no_logs),
+        Command::Watch => watch(args.no_logs),
+        Command::Debug => debug(args.no_logs),
+        Command::Challenge => challenge(args.no_logs),
     }
 }

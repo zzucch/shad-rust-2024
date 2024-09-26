@@ -12,18 +12,10 @@ use std::{
 
 use app::{AtomicDirection, PaperioApp};
 use clap::Parser;
-use eframe::egui;
 use paperio_proto::{
     traits::{JsonRead, JsonWrite},
     Command, Direction, Message,
 };
-
-const KEY_MAP: [(egui::Key, Direction); 4] = [
-    (egui::Key::ArrowUp, Direction::Up),
-    (egui::Key::ArrowDown, Direction::Down),
-    (egui::Key::ArrowRight, Direction::Right),
-    (egui::Key::ArrowLeft, Direction::Left),
-];
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
