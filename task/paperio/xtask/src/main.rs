@@ -117,7 +117,7 @@ impl Recipe {
     fn launch_bots() -> Result<Vec<JoinHandle<Result<()>>>> {
         let mut handles = Vec::<JoinHandle<Result<()>>>::with_capacity(3);
 
-        let bot_names = ["fool", "coward", "aggressive"];
+        let bot_names = ["coward", "coward", "coward"];
 
         for bot_name in bot_names {
             let bot_path = get_cwd_task_path()?
