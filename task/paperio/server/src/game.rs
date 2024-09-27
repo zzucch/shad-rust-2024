@@ -84,7 +84,7 @@ impl Game {
     }
 
     pub fn tick(&mut self) {
-        let next_position = self
+        let mut next_position = self
             .players
             .map(|player| player.position + player.direction);
 
@@ -93,16 +93,17 @@ impl Game {
         // This phase we sift all the players that are out of borders
         // and collect info about players that collide head to head.
         let mut cell_to_contenders = HashMap::<Cell, Vec<PlayerId>>::new();
-        for (player_id, &next_position) in next_position.iter() {
+        for (player_id, next_position) in next_position.iter_mut() {
             if self.has_lost[player_id] {
                 continue;
             }
 
             if !next_position.in_bounds() {
+                *next_position = self.players[player_id].position;
                 loses_in_this_tick[player_id] = true;
             } else {
                 cell_to_contenders
-                    .entry(next_position)
+                    .entry(*next_position)
                     .or_default()
                     .push(player_id);
             }
@@ -179,7 +180,7 @@ impl Game {
         // If two players cross each other at the same time, then the shortest trace wins.
         // If players have traces of the same length, then both of them lose.
         for (my_id, _) in self.players.iter_mut() {
-            if self.has_lost[my_id] {
+            if loses_in_this_tick[my_id] || self.has_lost[my_id] {
                 continue;
             }
 
