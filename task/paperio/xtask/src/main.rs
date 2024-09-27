@@ -83,10 +83,8 @@ impl Recipe {
             let _ = handle.join();
         }
 
-        for mb_handle in [gui_handle, strategy_handle] {
-            if let Some(handle) = mb_handle {
-                let _ = handle.join();
-            }
+        for handle in [gui_handle, strategy_handle].into_iter().flatten() {
+            let _ = handle.join();
         }
 
         match server_handle.join() {

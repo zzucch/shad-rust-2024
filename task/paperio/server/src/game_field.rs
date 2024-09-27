@@ -83,11 +83,17 @@ impl GameField {
         }
     }
 
+    pub fn traced_cells(&self, player_id: PlayerId) -> &HashSet<Cell> {
+        &self.traced_cells[player_id]
+    }
+
     pub fn set_trace(&mut self, c: Cell, player_id: PlayerId) {
+        // Unbind prev cell owner if any
         if let Some(prev_player_id) = self.field[c].traced {
             self.traced_cells[prev_player_id].remove(&c);
         }
 
+        // Bind new owner
         self.field[c].traced = Some(player_id);
         self.traced_cells[player_id].insert(c);
     }
@@ -95,18 +101,20 @@ impl GameField {
     pub fn set_captured(&mut self, c: Cell, player_id: PlayerId) {
         let cell_state = &mut self.field[c];
 
+        // Erace trace if it is ours
+        if cell_state.traced.is_some_and(|id| id == player_id) {
+            cell_state.traced = None;
+            self.traced_cells[player_id].remove(&c);
+        }
+
         // Unbind prev cell owner if any
         if let Some(prev_player_id) = cell_state.captured {
             self.captured_cells[prev_player_id].remove(&c);
-        }
-        if let Some(prev_player_id) = cell_state.traced {
-            self.traced_cells[prev_player_id].remove(&c);
         }
 
         // Bind new owner
         self.captured_cells[player_id].insert(c);
         cell_state.captured = Some(player_id);
-        cell_state.traced = None;
     }
 
     fn find_inner_cells(&self, player_id: PlayerId) -> Vec<Cell> {
