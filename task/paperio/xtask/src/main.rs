@@ -248,12 +248,20 @@ impl Recipe {
             cmd.stderr(log_file);
         }
 
-        eprintln!("Running: {cmd:?}");
+        eprintln!(
+            "$ {} {}",
+            cmd.get_program().to_string_lossy(),
+            cmd.get_args()
+                .into_iter()
+                .map(|a| a.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+
         let output = cmd
             .output()
             .with_context(|| format!("failed to run {cmd:?}"))?;
 
-        eprintln!("Terminated: {cmd:?}");
         Ok(output.stdout)
     }
 }
