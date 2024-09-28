@@ -240,6 +240,7 @@ impl Recipe {
             let file_path = dir_path.join(format!("{}.log", log_name.as_ref()));
             let log_file = fs::OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .open(&file_path)
                 .with_context(|| format!("failed to create {file_path:?}"))?;
