@@ -3,6 +3,7 @@ members = [
     "task/add",
     "task/comm",
     "task/comm/xtask",
+    "task/ini",
     "task/paperio/gui",
     "task/paperio/proto",
     "task/paperio/server",
@@ -10,6 +11,7 @@ members = [
     "task/paperio/wasm-launcher",
     "task/paperio/xtask",
     "task/perc",
+    "task/polka",
     "xtask/base",
     "xtask/util",
 ]
