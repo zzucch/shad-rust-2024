@@ -1,0 +1,12 @@
+[lint]
+fmt = true
+clippy = true
+
+[test]
+debug = true
+release = true
+
+[grade]
+allowlist = [
+  "src/lib.rs",
+]
