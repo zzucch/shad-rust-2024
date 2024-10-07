@@ -83,6 +83,10 @@ impl Game {
         true
     }
 
+    pub fn get_player_scores(&self) -> PlayerIndexedVector<u32> {
+        self.players.iter().map(|(_, p)| p.score).collect()
+    }
+
     pub fn tick(&mut self) {
         let mut next_position = self
             .players

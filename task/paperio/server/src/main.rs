@@ -173,7 +173,7 @@ fn main() -> Result<()> {
         .unwrap();
 
     let (player_endpoints, spectator_endpoints) = get_endpoints(&args)?;
-    Server::new(player_endpoints, spectator_endpoints).run(args.tick_count)?;
+    Server::new(player_endpoints, spectator_endpoints).run(args.tick_count);
 
     Ok(())
 }
