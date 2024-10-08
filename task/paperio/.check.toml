@@ -4,7 +4,7 @@ fmt = true
 clippy = true
 
 [[test.custom_hooks]]
-command = ["cargo", "xtask", "challenge"]
+command = ["cargo", "xtask", "--no-logs", "challenge"]
 
 [grade]
 allowlist = [

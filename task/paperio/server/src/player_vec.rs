@@ -70,3 +70,11 @@ impl<T> IndexMut<PlayerId> for PlayerIndexedVector<T> {
         &mut self.data[index.get() - 1]
     }
 }
+
+impl<T> FromIterator<T> for PlayerIndexedVector<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            data: iter.into_iter().collect(),
+        }
+    }
+}

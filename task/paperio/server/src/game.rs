@@ -1,4 +1,4 @@
-use std::{collections::HashMap, num::NonZero};
+use std::{cmp::Ordering, collections::HashMap, num::NonZero};
 
 use paperio_proto::{self, Cell, Direction, GameParams, World};
 
@@ -26,24 +26,10 @@ impl Player {
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
-enum PlayerStatus {
-    #[default]
-    Alive,
-    Losing,
-    Lost,
-}
-
-impl PlayerStatus {
-    fn has_lost(&self) -> bool {
-        matches!(self, Self::Losing | Self::Lost)
-    }
-}
-
 pub struct Game {
     tick: u32,
     players: PlayerIndexedVector<Player>,
-    player_status: PlayerIndexedVector<PlayerStatus>,
+    has_lost: PlayerIndexedVector<bool>,
     params: GameParams,
     field: GameField,
 }
@@ -69,19 +55,19 @@ impl Game {
         for (player_id, player) in players.iter() {
             field.init_player(player_id, player.position);
         }
-        let player_status = PlayerIndexedVector::new(players_amount);
+        let has_lost = PlayerIndexedVector::new(players_amount);
 
         Game {
             tick: 1,
             players,
-            player_status,
+            has_lost,
             params,
             field,
         }
     }
 
     pub fn has_lost(&self, i: PlayerId) -> bool {
-        self.player_status[i].has_lost()
+        self.has_lost[i]
     }
 
     pub fn get_game_params(&self) -> GameParams {
@@ -97,73 +83,142 @@ impl Game {
         true
     }
 
+    pub fn get_player_scores(&self) -> PlayerIndexedVector<u32> {
+        self.players.iter().map(|(_, p)| p.score).collect()
+    }
+
     pub fn tick(&mut self) {
-        let next_position = self
+        let mut next_position = self
             .players
             .map(|player| player.position + player.direction);
 
+        let mut loses_in_this_tick = PlayerIndexedVector::new(self.players.len());
+
+        // This phase we sift all the players that are out of borders
+        // and collect info about players that collide head to head.
         let mut cell_to_contenders = HashMap::<Cell, Vec<PlayerId>>::new();
-        for (player_id, &next_position) in next_position.iter() {
-            if self.player_status[player_id].has_lost() {
+        for (player_id, next_position) in next_position.iter_mut() {
+            if self.has_lost[player_id] {
                 continue;
             }
 
             if !next_position.in_bounds() {
-                self.player_status[player_id] = PlayerStatus::Losing;
+                *next_position = self.players[player_id].position;
+                loses_in_this_tick[player_id] = true;
             } else {
                 cell_to_contenders
-                    .entry(next_position)
+                    .entry(*next_position)
                     .or_default()
                     .push(player_id);
             }
         }
 
+        // This phase we process head to head collisions.
+        // If two or more players collide and one of them owns this cell, the owner wins.
+        // Otherwise, player with shortest tail wins.
+        // If multiple players have shortest tail, all of them lose.
         for (&pos, players) in cell_to_contenders.iter() {
-            if players.len() > 1 {
-                for &player_id in players {
-                    if !self.field[pos].is_captured_by(player_id) {
-                        self.player_status[player_id] = PlayerStatus::Losing;
+            if players.len() <= 1 {
+                continue;
+            }
+
+            let mut cell_owner = None;
+            let mut shortest_path = usize::MAX;
+            let mut player_with_shortest_path = players[0];
+            let mut multiple_shortest = false;
+            for &player_id in players {
+                if self.field[pos].is_captured_by(player_id) {
+                    cell_owner = Some(player_id);
+                }
+
+                let player_path_len = self.field.traced_cells(player_id).len();
+                match player_path_len.cmp(&shortest_path) {
+                    Ordering::Less => {
+                        multiple_shortest = false;
+                        shortest_path = player_path_len;
+                        player_with_shortest_path = player_id;
                     }
+                    Ordering::Equal => {
+                        multiple_shortest = true;
+                    }
+                    Ordering::Greater => {}
+                }
+            }
+
+            let winner = cell_owner.or(if multiple_shortest {
+                None
+            } else {
+                Some(player_with_shortest_path)
+            });
+
+            for &player_id in players {
+                if winner != Some(player_id) {
+                    loses_in_this_tick[player_id] = true
                 }
             }
         }
 
+        // This phase we process players, that capture territory.
+        // That is they step into their territory.
+        // If player moves within his territory, nothing happens.
         let player_positions = self.players.map(|p| p.position);
         for (player_id, player) in self.players.iter_mut() {
-            if self.player_status[player_id].has_lost() {
+            if loses_in_this_tick[player_id] || self.has_lost[player_id] {
                 continue;
             }
 
             let cell_state = &self.field[next_position[player_id]];
-            if cell_state.is_traced_by(player_id) {
-                // self-cross
-                self.player_status[player_id] = PlayerStatus::Losing;
-                continue;
-            } else if cell_state.is_captured_by(player_id) {
+            if cell_state.is_captured_by(player_id) {
                 let (enemy_cells_captured, free_cells_captured, enemies_captured) =
                     self.field.capture_all(player_id, &player_positions);
 
                 player.score += enemy_cells_captured * 5 + free_cells_captured;
 
                 for &enemy_id in &enemies_captured {
-                    self.player_status[enemy_id] = PlayerStatus::Losing;
+                    loses_in_this_tick[enemy_id] = true;
                 }
             }
         }
 
-        for (player_id, _) in self.players.iter_mut() {
-            if self.player_status[player_id].has_lost() {
+        // This phase we process crossing players traces.
+        // If two players cross each other at the same time, then the shortest trace wins.
+        // If players have traces of the same length, then both of them lose.
+        for (my_id, _) in self.players.iter_mut() {
+            if loses_in_this_tick[my_id] || self.has_lost[my_id] {
                 continue;
             }
 
-            let cell_state = self.field[next_position[player_id]];
-            if let Some(traced_player_id) = cell_state.is_traced() {
-                self.player_status[traced_player_id] = PlayerStatus::Losing;
+            let my_cell_state = self.field[next_position[my_id]];
+            if let Some(other_id) = my_cell_state.is_traced() {
+                if other_id == my_id {
+                    // Self cross.
+                    loses_in_this_tick[my_id] = true;
+                }
+
+                // We cross someones path, chech if he crosses our path.
+                let other_cell_state = self.field[next_position[other_id]];
+                let losers: &[_] = if other_cell_state.is_traced_by(my_id) {
+                    // We cross each other, shorter path wins.
+                    let my_trace_len = self.field.traced_cells(my_id).len();
+                    let other_trace_len = self.field.traced_cells(my_id).len();
+                    match my_trace_len.cmp(&other_trace_len) {
+                        Ordering::Less => &[my_id],
+                        Ordering::Equal => &[my_id, other_id],
+                        Ordering::Greater => &[other_id],
+                    }
+                } else {
+                    // He does not crosses us, but we cross him.
+                    &[other_id]
+                };
+                for &loser_id in losers {
+                    loses_in_this_tick[loser_id] = true;
+                }
             }
         }
 
-        for (player_id, _) in self.players.iter_mut() {
-            if self.player_status[player_id].has_lost() {
+        // This phase we move players and set their traces.
+        for (player_id, player) in self.players.iter_mut() {
+            if loses_in_this_tick[player_id] || self.has_lost[player_id] {
                 continue;
             }
 
@@ -171,18 +226,14 @@ impl Game {
             if !cell_state.is_captured_by(player_id) {
                 self.field.set_trace(next_position[player_id], player_id)
             }
+            player.position = next_position[player_id];
         }
 
-        for (player_id, status) in self.player_status.iter_mut() {
-            match *status {
-                PlayerStatus::Alive => {
-                    self.players[player_id].position = next_position[player_id];
-                }
-                PlayerStatus::Losing => {
-                    self.field.remove_player(player_id);
-                    *status = PlayerStatus::Lost;
-                }
-                PlayerStatus::Lost => {}
+        // This phase we marks player that have lost in this tick.
+        for (player_id, has_lost) in self.has_lost.iter_mut() {
+            if loses_in_this_tick[player_id] {
+                self.field.remove_player(player_id);
+                *has_lost = true;
             }
         }
 

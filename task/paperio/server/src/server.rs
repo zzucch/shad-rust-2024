@@ -28,7 +28,7 @@ impl Server {
         }
     }
 
-    pub fn run(&mut self, ticks_amount: usize) -> io::Result<Option<PlayerId>> {
+    pub fn run(&mut self, ticks_amount: usize) -> PlayerIndexedVector<u32> {
         let mut game = Game::new(self.player_endpoints.len());
         let params = game.get_game_params();
 
@@ -65,7 +65,7 @@ impl Server {
             None => println!("There is no winner (tie)"),
         }
 
-        Ok(mb_leader_id)
+        game.get_player_scores()
     }
 
     fn send_to_spectators(&mut self, message: &Message) {
