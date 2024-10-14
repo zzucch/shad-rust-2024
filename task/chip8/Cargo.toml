@@ -1,0 +1,10 @@
+[package]
+name = "chip8"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror-no-std = "2.0.2"
+
+[dev-dependencies]
+rand = "0.8.5"

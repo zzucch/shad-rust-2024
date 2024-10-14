@@ -1,0 +1,11 @@
+[package]
+name = "xtask-chip8"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { version = "1.0.87" }
+clap = { version = "4.5.17", features = ["derive"] }
+xshell = { version = "0.2.6" }
+xtask-base = { path = "../../../xtask/base" }
+xtask-util = { path = "../../../xtask/util" }
