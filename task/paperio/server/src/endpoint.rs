@@ -10,6 +10,16 @@ pub trait Endpoint {
     fn get_command(&mut self) -> io::Result<Command>;
 }
 
+impl<'a, T: Endpoint> Endpoint for &'a mut T {
+    fn send_message(&mut self, message: &Message) -> io::Result<()> {
+        T::send_message(self, message)
+    }
+
+    fn get_command(&mut self) -> io::Result<Command> {
+        T::get_command(self)
+    }
+}
+
 pub struct JsonEndpoint<R, W> {
     reader: R,
     writer: W,

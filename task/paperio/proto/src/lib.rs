@@ -13,7 +13,7 @@ pub const MAP_SIZE_CELLS: i32 = 31;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(tag = "type", content = "params", rename_all = "snake_case")]
 pub enum Message {
     StartGame(GameParams),
@@ -161,6 +161,19 @@ impl Add<Direction> for Cell {
         };
         self
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GameReplay {
+    pub player_infos: HashMap<PlayerId, PlayerInfo>,
+    pub messages: Vec<Message>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PlayerInfo {
+    pub user_name: String,
 }
 
 ////////////////////////////////////////////////////////////////////////////////

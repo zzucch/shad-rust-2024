@@ -30,6 +30,10 @@ impl<T> PlayerIndexedVector<T> {
         self.data.len()
     }
 
+    pub fn into_vec(self) -> Vec<T> {
+        self.data
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (PlayerId, &T)> {
         self.data
             .iter()

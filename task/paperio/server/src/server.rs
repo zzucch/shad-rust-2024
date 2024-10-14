@@ -1,5 +1,3 @@
-use std::io;
-
 use log::*;
 use paperio_proto::{Command, Message};
 
@@ -9,15 +7,15 @@ use crate::{
     player_vec::PlayerIndexedVector,
 };
 
-pub struct Server {
-    player_endpoints: PlayerIndexedVector<Box<dyn Endpoint>>,
-    spectator_endpoints: Vec<Box<dyn Endpoint>>,
+pub struct Server<'a> {
+    player_endpoints: PlayerIndexedVector<Box<dyn Endpoint + 'a>>,
+    spectator_endpoints: Vec<Box<dyn Endpoint + 'a>>,
 }
 
-impl Server {
+impl<'a> Server<'a> {
     pub fn new(
-        player_endpoints: PlayerIndexedVector<impl Endpoint + 'static>,
-        spectator_endpoints: impl IntoIterator<Item = impl Endpoint + 'static>,
+        player_endpoints: PlayerIndexedVector<impl Endpoint + 'a>,
+        spectator_endpoints: impl IntoIterator<Item = impl Endpoint + 'a>,
     ) -> Self {
         Self {
             player_endpoints: player_endpoints.mapped(|e| Box::new(e) as Box<dyn Endpoint>),

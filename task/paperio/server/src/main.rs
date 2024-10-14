@@ -1,16 +1,12 @@
-mod endpoint;
-mod game;
-mod game_field;
-mod player_vec;
-mod server;
-
 use anyhow::{ensure, Context, Result};
 use clap::Parser;
-use endpoint::{Endpoint, JsonEndpoint};
-use game::PlayerId;
 use log::info;
-use player_vec::PlayerIndexedVector;
-use server::Server;
+use paperio_server::{
+    endpoint::{Endpoint, JsonEndpoint},
+    game::PlayerId,
+    player_vec::PlayerIndexedVector,
+    server::Server,
+};
 
 use std::{
     collections::HashMap,
