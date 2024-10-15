@@ -1,5 +1,7 @@
+use anyhow::{Context, Result};
 use clap::Parser;
-use paperio_wasm_launcher::{execute_wasm, tcp_stream};
+use paperio_wasm_launcher::WasmStrategyRunner;
+
 use std::net::TcpStream;
 
 #[derive(Parser)]
@@ -12,11 +14,16 @@ struct Arguments {
     port: u16,
 }
 
-pub fn main() {
+pub fn main() -> Result<()> {
     let args = Arguments::parse();
 
-    let stream = TcpStream::connect(format!("{}:{}", args.address, args.port)).unwrap();
-    let cloned_stream = stream.try_clone().unwrap();
+    let address = format!("{}:{}", args.address, args.port);
+    let stdin = TcpStream::connect(&address).with_context(|| format!("failed to {address}"))?;
+    let stdout = stdin.try_clone().context("failed to clone tcp stream")?;
 
-    execute_wasm(args.path, tcp_stream(stream), tcp_stream(cloned_stream)).unwrap();
+    let status = WasmStrategyRunner::new(&args.path, stdin, stdout)
+        .run()
+        .context("failed to run strategy")?;
+
+    status.result.context("strategy failed")
 }

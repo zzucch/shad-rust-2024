@@ -35,7 +35,7 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(players_amount: usize) -> Self {
+    pub fn new(player_count: usize) -> Self {
         let params = GameParams {
             x_cells_count: X_CELLS_COUNT,
             y_cells_count: Y_CELLS_COUNT,
@@ -43,19 +43,19 @@ impl Game {
         let mut field = GameField::new(
             params.x_cells_count as usize,
             params.y_cells_count as usize,
-            players_amount,
+            player_count,
         );
         let players: PlayerIndexedVector<Player> = INIT_POS
             .iter()
             .map(|&pos| Player::new(pos))
-            .take(players_amount)
+            .take(player_count)
             .collect::<Vec<_>>()
             .into();
 
         for (player_id, player) in players.iter() {
             field.init_player(player_id, player.position);
         }
-        let has_lost = PlayerIndexedVector::new(players_amount);
+        let has_lost = PlayerIndexedVector::new(player_count);
 
         Game {
             tick: 1,

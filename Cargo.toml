@@ -1,6 +1,9 @@
 [workspace]
 members = [
     "task/add",
+    "task/chip8",
+    "task/chip8/tools/console-runner",
+    "task/chip8/xtask",
     "task/comm",
     "task/comm/xtask",
     "task/flatmap",
