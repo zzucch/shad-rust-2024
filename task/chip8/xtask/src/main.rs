@@ -1,8 +1,7 @@
-use std::path::Path;
+use std::{path::Path, process};
 
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use xshell::{cmd, Shell};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -41,13 +40,11 @@ enum TestImage {
 }
 
 fn run(image_path: impl AsRef<Path>) -> Result<()> {
-    let sh = Shell::new()?;
-    let image_path = image_path.as_ref();
-    cmd!(
-        sh,
-        "cargo run --package chip8-console-runner -- {image_path}"
-    )
-    .run()?;
+    let status = process::Command::new("cargo")
+        .args(["run", "--package", "chip8-console-runner", "--"])
+        .arg(image_path.as_ref())
+        .status()?;
+    ensure!(status.success(), "command exited with status {}", status);
     Ok(())
 }
 
