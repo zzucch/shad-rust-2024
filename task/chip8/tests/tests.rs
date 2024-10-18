@@ -5,11 +5,14 @@ use chip8::{Ch8Image, FrameBuffer, ManagedInterpreter, Nibble};
 ////////////////////////////////////////////////////////////////////////////////
 
 fn check_display(fb: &FrameBuffer, expected_raw: &str) {
+    const DISPLAY_ON: &str = "▓";
+    const DISPLAY_OFF: &str = " ";
+
     let actual_lines = fb
         .iter_rows()
         .map(|row| {
             row.iter()
-                .map(|v| if *v { '#' } else { '.' })
+                .map(|v| if *v { DISPLAY_ON } else { DISPLAY_OFF })
                 .collect::<String>()
         })
         .collect::<Vec<_>>();
@@ -19,6 +22,7 @@ fn check_display(fb: &FrameBuffer, expected_raw: &str) {
         .split("\n")
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
+        .map(|l| l.replace('#', DISPLAY_ON).replace('.', DISPLAY_OFF))
         .collect::<Vec<_>>();
     let expected = expected_lines.join("\n");
 
