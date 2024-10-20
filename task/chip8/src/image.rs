@@ -26,15 +26,20 @@ impl<T: AsRef<[u8]>> Ch8Image<T> {
     const BASE_ADDRESS: Address = Address::new(0x200);
 
     pub fn new(data: T) -> Result<Self, Ch8ImageError> {
-        // TODO: your code here.
-        unimplemented!()
+        if data.as_ref().len() > Address::DOMAIN_SIZE {
+            return Err(Ch8ImageError::TooBig);
+        }
+
+        Ok(Ch8Image { data })
     }
 }
 
 impl<T: AsRef<[u8]>> Image for Ch8Image<T> {
     fn load_into_memory(&self, memory: &mut [u8; Address::DOMAIN_SIZE]) {
-        // TODO: your code here.
-        unimplemented!()
+        let data = self.data.as_ref();
+        let entry_point = self.entry_point().as_usize();
+
+        memory[entry_point..entry_point + data.len()].copy_from_slice(data);
     }
 
     fn entry_point(&self) -> Address {

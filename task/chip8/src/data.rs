@@ -10,7 +10,7 @@ pub type RegisterIndex = Nibble;
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Nibble(u8);
+pub struct Nibble(pub(crate) u8);
 
 impl Nibble {
     pub const WIDTH: usize = 4;
@@ -110,18 +110,29 @@ impl OpCode {
     }
 
     pub fn extract_address(self) -> Address {
-        // TODO: your code here.
-        unimplemented!()
+        Address(self.0 & 0xFFF)
     }
 
     pub fn extract_word(self, index: usize) -> Word {
-        // TODO: your code here.
-        unimplemented!()
+        let value = match index {
+            0 => (self.0 & 0xFF00) >> 8,
+            1 => self.0 & 0x00FF,
+            _ => unreachable!(),
+        };
+
+        value as Word
     }
 
     pub fn extract_nibble(self, index: usize) -> Nibble {
-        // TODO: your code here.
-        unimplemented!()
+        let value = match index {
+            0 => (self.0 & 0xF000) >> 12,
+            1 => (self.0 & 0x0F00) >> 8,
+            2 => (self.0 & 0x00F0) >> 4,
+            3 => self.0 & 0x000F,
+            _ => unreachable!(),
+        };
+
+        Nibble(value as u8)
     }
 
     pub fn as_u16(self) -> u16 {

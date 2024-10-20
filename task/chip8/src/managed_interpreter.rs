@@ -22,6 +22,30 @@ impl FrameBuffer {
     pub fn iter_rows(&self) -> impl Iterator<Item = &[bool; SCREEN_WIDTH]> {
         self.0.iter()
     }
+
+    pub fn clear(&mut self) {
+        for row in self.0.iter_mut() {
+            for element in row.iter_mut() {
+                *element = false
+            }
+        }
+    }
+
+    pub fn flip(&mut self, point: Point, start: Point) -> bool {
+        let target = start + point;
+
+        let y = target.y as usize;
+        let x = target.x as usize;
+
+        if y >= SCREEN_HEIGHT || x >= SCREEN_WIDTH {
+            return false;
+        }
+
+        let previous_value = self.0[y][x];
+        self.0[y][x] = !previous_value;
+
+        previous_value
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,13 +67,18 @@ struct ManagedPlatform<R: RandomNumberGenerator> {
 
 impl<R: RandomNumberGenerator> Platform for ManagedPlatform<R> {
     fn draw_sprite(&mut self, pos: Point, sprite: Sprite) -> bool {
-        // TODO: your code here.
-        unimplemented!()
+        let wrapped_pos = wrap_point_within_screen(pos);
+
+        let mut had_pixels_flipped = false;
+        for pixel in sprite.iter_pixels() {
+            had_pixels_flipped |= self.frame_buffer.flip(pixel, wrapped_pos);
+        }
+
+        had_pixels_flipped
     }
 
     fn clear_screen(&mut self) {
-        // TODO: your code here.
-        unimplemented!()
+        self.frame_buffer.clear()
     }
 
     fn get_delay_timer(&self) -> Word {
@@ -79,6 +108,13 @@ impl<R: RandomNumberGenerator> Platform for ManagedPlatform<R> {
 
     fn get_random_word(&mut self) -> Word {
         (self.rand)()
+    }
+}
+
+fn wrap_point_within_screen(point: Point) -> Point {
+    Point {
+        x: (point.x as usize % SCREEN_WIDTH) as u8,
+        y: (point.y as usize % SCREEN_HEIGHT) as u8,
     }
 }
 
@@ -130,8 +166,7 @@ impl<R: RandomNumberGenerator> ManagedInterpreter<R> {
     }
 
     pub fn simulate_one_instruction(&mut self) -> Result<()> {
-        // TODO: your code here.
-        unimplemented!()
+        self.inner.run_next_instruction()
     }
 
     pub fn simulate_duration(&mut self, duration: Duration) -> Result<()> {
