@@ -8,5 +8,6 @@ command = ["cargo", "xtask", "--no-logs", "challenge"]
 
 [grade]
 allowlist = [
-  "strategy/src/strategy.rs",
+  "strategy/src",
 ]
+

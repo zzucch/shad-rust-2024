@@ -69,6 +69,10 @@ pub struct TestConfig {
 #[derive(Deserialize)]
 pub struct GradeConfig {
     pub allowlist: Vec<PathBuf>,
+
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub custom_hooks: Vec<CustomHookConfig>,
 }
 
 pub fn read_checker_config(task_path: impl AsRef<Path>) -> Result<CheckerConfig> {

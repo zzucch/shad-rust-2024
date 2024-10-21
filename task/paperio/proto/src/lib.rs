@@ -54,7 +54,7 @@ pub enum Direction {
     Left,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum Command {
     ChangeDirection(Direction),
     NoOp,

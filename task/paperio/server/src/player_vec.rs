@@ -30,6 +30,10 @@ impl<T> PlayerIndexedVector<T> {
         self.data.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     pub fn into_vec(self) -> Vec<T> {
         self.data
     }
@@ -80,5 +84,14 @@ impl<T> FromIterator<T> for PlayerIndexedVector<T> {
         Self {
             data: iter.into_iter().collect(),
         }
+    }
+}
+
+impl<T> IntoIterator for PlayerIndexedVector<T> {
+    type Item = T;
+    type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
     }
 }

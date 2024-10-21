@@ -1,16 +1,27 @@
+use std::{
+    collections::HashMap,
+    future::Future,
+    io::{BufRead, Write},
+    ops::DerefMut,
+    sync::{
+        atomic::{AtomicU64, AtomicU8, Ordering},
+        Arc, Mutex,
+    },
+};
+
 use crate::{
     colors::{cell_color, colors_for_player, head_color},
     state::GameState,
 };
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    mpsc, Arc,
-};
 
+use anyhow::bail;
 use eframe::egui;
-use egui::{pos2, vec2, Align, Color32, Layout, Rect, RichText, Sense, Vec2};
+use egui::{pos2, vec2, Align, Color32, Layout, Rect, RichText, Sense, Slider, Vec2};
 use num_traits::FromPrimitive;
-use paperio_proto::{Cell, Direction, GameParams, Message};
+use paperio_proto::{
+    traits::{JsonRead, JsonWrite},
+    Cell, Command, Direction, Message, PlayerId, PlayerInfo,
+};
 
 const KEY_MAP: [(egui::Key, Direction); 4] = [
     (egui::Key::ArrowUp, Direction::Up),
@@ -19,94 +30,135 @@ const KEY_MAP: [(egui::Key, Direction); 4] = [
     (egui::Key::ArrowLeft, Direction::Left),
 ];
 
-const CELL_SIZE_WITH_BORDER: f32 = 31.;
-const CELL_SIZES: Vec2 = Vec2::splat(CELL_SIZE_WITH_BORDER - 1.);
-
-pub struct AtomicDirection(Arc<AtomicU8>);
-
-impl AtomicDirection {
-    pub fn new(direction: Direction) -> Self {
-        Self(Arc::new(AtomicU8::new(direction as u8)))
-    }
-
-    pub fn store(&mut self, direction: Direction) {
-        self.0.store(direction as u8, Ordering::Relaxed);
-    }
-
-    pub fn load(&self) -> Direction {
-        let direction = self.0.load(Ordering::Relaxed);
-        Direction::from_u8(direction).unwrap()
-    }
-
-    pub fn clone(&self) -> AtomicDirection {
-        Self(self.0.clone())
-    }
-}
-
 enum State {
     AwaitForGameStart,
-    AwaitForFirstTick(GameParams),
     Tick(GameState),
     Ended,
 }
 
 pub struct PaperioApp {
-    state: State,
-    msg_receiver: mpsc::Receiver<Message>,
+    state: Arc<Mutex<State>>,
     direction: AtomicDirection,
+    tick_duration: Arc<AtomicU64>,
+    is_spectator: bool,
+    player_nicknames: Option<HashMap<PlayerId, PlayerInfo>>,
 }
 
 impl PaperioApp {
-    pub fn new(
-        _cc: &eframe::CreationContext<'_>,
-        reader: mpsc::Receiver<Message>,
-        dir: AtomicDirection,
-    ) -> Self {
+    pub fn new(tick_delay_ms: u64, is_spectator: bool) -> Self {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
         Self {
-            state: State::AwaitForGameStart,
-            msg_receiver: reader,
-            direction: dir,
+            state: Arc::new(Mutex::new(State::AwaitForGameStart)),
+            direction: AtomicDirection::new(Direction::Left),
+            tick_duration: Arc::new(AtomicU64::new(tick_delay_ms)),
+            is_spectator,
+            player_nicknames: None,
         }
     }
 
-    fn update_state(&mut self, read_message: Message) {
-        match read_message {
-            Message::StartGame(game_params) => self.state = State::AwaitForFirstTick(game_params),
-            Message::Tick(world) => {
-                match &mut self.state {
-                    State::AwaitForGameStart => todo!("tick while Await"),
-                    State::AwaitForFirstTick(params) => {
-                        let mut field = GameState::new(*params);
-                        field.update(world);
-                        self.state = State::Tick(field);
+    pub fn set_nicknames(&mut self, nicknames: HashMap<PlayerId, PlayerInfo>) {
+        self.player_nicknames = Some(nicknames)
+    }
+
+    fn get_nickname(&self, player_id: &PlayerId) -> String {
+        self.player_nicknames
+            .as_ref()
+            .and_then(|nicknames| nicknames.get(player_id).map(|i| &i.user_name).cloned())
+            .unwrap_or_else(|| {
+                if player_id == "i" {
+                    "Me".to_string()
+                } else {
+                    format!("Player #{player_id}")
+                }
+            })
+    }
+}
+
+impl PaperioApp {
+    pub fn run_backend(
+        &self,
+        mut reader: impl BufRead + Send + 'static,
+        mut writer: impl Write + Send + 'static,
+    ) -> impl Future<Output = anyhow::Result<()>> {
+        let state = self.state.clone();
+        let direction_store = self.direction.clone();
+        let tick_duration_store = self.tick_duration.clone();
+        let is_spectator = self.is_spectator;
+
+        async move {
+            // receive `GameParams` msg
+            log::info!("Waiting for the first message from server with game params");
+            let Message::StartGame(params) = reader.read_message()? else {
+                bail!("first message is not `StartGame`")
+            };
+            *state.lock().unwrap() = State::Tick(GameState::new(params));
+
+            // receive tick msgs
+            log::info!("Entering loop of receiving tick messages");
+            loop {
+                let read_message = reader.read_message()?;
+                match read_message {
+                    Message::StartGame(_) => bail!("unexpected `StartGame` message"),
+                    Message::Tick(world) => {
+                        let mut state_guard = state.lock().unwrap();
+                        match state_guard.deref_mut() {
+                            State::AwaitForGameStart => {
+                                bail!("unexpected tick while waiting for game to start")
+                            }
+                            State::Tick(game_field) => {
+                                game_field.update(world);
+                            }
+                            State::Ended => bail!("unexpected tick when game ended"),
+                        }
                     }
-                    State::Tick(game_field) => {
-                        game_field.update(world);
+                    Message::EndGame {} => {
+                        log::info!("End game message received");
+                        *state.lock().unwrap() = State::Ended;
+                        break;
                     }
-                    State::Ended => todo!("tick while Ended"),
+                }
+
+                let tick_ms = tick_duration_store.load(Ordering::Relaxed);
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(tick_ms));
+                }
+                #[cfg(target_arch = "wasm32")]
+                gloo_timers::future::TimeoutFuture::new(tick_ms as u32).await;
+
+                let cmd = if is_spectator {
+                    Command::NoOp
+                } else {
+                    let direction = direction_store.load();
+                    Command::ChangeDirection(direction)
                 };
+                writer.write_command(&cmd)?;
+                writer.flush()?;
             }
-            Message::EndGame {} => self.state = State::Ended,
-        };
+            Ok(())
+        }
     }
 
     fn draw_field(&self, ui: &mut egui::Ui, game: &GameState) {
         let params = game.params;
         let size_in_cells = vec2(params.x_cells_count as f32, params.y_cells_count as f32);
+        let size_in_pixels = ui.available_size_before_wrap();
+        let cell_size_with_border = (size_in_pixels / size_in_cells).floor().min_elem();
+        let cell_sizes = Vec2::splat(cell_size_with_border - 1.);
 
         let (_, painter) =
-            ui.allocate_painter(size_in_cells * CELL_SIZE_WITH_BORDER, Sense::hover());
+            ui.allocate_painter(size_in_cells * cell_size_with_border, Sense::hover());
 
         let zero_pos = ui.min_rect().min.to_vec2();
         let draw_cell = |Cell(x, y): Cell, color: Color32| {
-            // Game indexation is down-to-top, but we draw top-to-down, so invert here.
+            // Game indexation is down-to-top, but we draw top-to-down, so invert Oy here.
             let y = params.y_cells_count - 1 - y as u32;
-            let rect_corner = pos2(x as f32, y as f32) * CELL_SIZE_WITH_BORDER + zero_pos;
-            let rect = Rect::from_min_size(rect_corner, CELL_SIZES);
+            let rect_corner = pos2(x as f32, y as f32) * cell_size_with_border + zero_pos;
+            let rect = Rect::from_min_size(rect_corner, cell_sizes);
             painter.rect_filled(rect, 0., color);
         };
 
@@ -129,15 +181,10 @@ impl eframe::App for PaperioApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Ok(msg) = self.msg_receiver.try_recv() {
-                self.update_state(msg)
-            }
-            match self.state {
+            let mut state_guard = self.state.lock().unwrap();
+            match state_guard.deref_mut() {
                 State::AwaitForGameStart => {
                     ui.label("Waiting to 'start_game'");
-                }
-                State::AwaitForFirstTick(_) => {
-                    ui.label("Game started, waiting for the first tick");
                 }
                 State::Tick(ref game) => {
                     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
@@ -156,15 +203,20 @@ impl eframe::App for PaperioApp {
                             });
 
                             for (id, score) in &scores {
-                                let text = if id.as_str() == "i" {
-                                    format!("Me: {score}")
-                                } else {
-                                    format!("Player #{id}: {score}")
-                                };
+                                let player_name = self.get_nickname(id);
+                                let text = format!("{player_name}: {score}");
                                 let text = RichText::new(text)
                                     .size(30.)
                                     .color(colors_for_player(id).captured);
                                 ui.label(text);
+                            }
+
+                            let tick_ms = self.tick_duration.load(Ordering::Relaxed);
+                            let mut slider_tick_ms = tick_ms;
+                            ui.add(Slider::new(&mut slider_tick_ms, 0..=1000));
+                            ui.label("Tick (ms)");
+                            if slider_tick_ms != tick_ms {
+                                self.tick_duration.store(slider_tick_ms, Ordering::Relaxed);
                             }
                         })
                     });
@@ -179,6 +231,28 @@ impl eframe::App for PaperioApp {
                     ui.label("Game ended");
                 }
             }
+            drop(state_guard);
         });
+    }
+}
+
+struct AtomicDirection(Arc<AtomicU8>);
+
+impl AtomicDirection {
+    fn new(direction: Direction) -> Self {
+        Self(Arc::new(AtomicU8::new(direction as u8)))
+    }
+
+    fn store(&self, direction: Direction) {
+        self.0.store(direction as u8, Ordering::Relaxed);
+    }
+
+    fn load(&self) -> Direction {
+        let direction = self.0.load(Ordering::Relaxed);
+        Direction::from_u8(direction).unwrap()
+    }
+
+    fn clone(&self) -> AtomicDirection {
+        Self(self.0.clone())
     }
 }
