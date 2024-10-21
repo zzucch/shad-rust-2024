@@ -82,16 +82,17 @@ fn test_iter_simple() {
 
 #[test]
 fn test_iter_parallel() {
-    let mut stack = PStack::new();
+    let mut first = PStack::new();
     for i in 0..100 {
-        stack = stack.push(i);
+        first = first.push(i);
     }
-    let mut iter_one = stack.iter();
+    let mut second = first.clone();
+    let mut iter_one = first.iter();
 
     for i in 100..200 {
-        stack = stack.push(i);
+        second = second.push(i);
     }
-    let mut iter_two = stack.iter();
+    let mut iter_two = second.iter();
 
     for i in 0..200 {
         if i < 100 {
