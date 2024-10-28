@@ -1,0 +1,13 @@
+[lint]
+fmt = true
+clippy = true
+
+[test]
+debug = true
+release = true
+
+[grade]
+allowlist = [
+  "gc-derive/src/lib.rs",
+  "src/lib.rs",
+]
