@@ -4,11 +4,14 @@ use crate::{
     image::Image,
     interpreter::{Interpreter, SCREEN_HEIGHT, SCREEN_WIDTH},
     platform::{Key, Platform, Point, Sprite},
+    Error, KeyEventKind, Nibble,
 };
 
 use core::time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+pub const KEYPAD_SIZE: usize = 16;
 
 pub struct FrameBuffer([[bool; SCREEN_WIDTH]; SCREEN_HEIGHT]);
 
@@ -62,7 +65,7 @@ struct ManagedPlatform<R: RandomNumberGenerator> {
     frame_buffer: FrameBuffer,
     delay_timer: Word,
     sound_timer: Word,
-    // TODO: your code here.
+    keypad: ManagedKeypad,
 }
 
 impl<R: RandomNumberGenerator> Platform for ManagedPlatform<R> {
@@ -82,28 +85,23 @@ impl<R: RandomNumberGenerator> Platform for ManagedPlatform<R> {
     }
 
     fn get_delay_timer(&self) -> Word {
-        // TODO: your code here.
-        unimplemented!()
+        self.delay_timer
     }
 
     fn set_delay_timer(&mut self, value: Word) {
-        // TODO: your code here.
-        unimplemented!()
+        self.delay_timer = value
     }
 
     fn set_sound_timer(&mut self, value: Word) {
-        // TODO: your code here.
-        unimplemented!()
+        self.sound_timer = value
     }
 
     fn is_key_down(&self, key: Key) -> bool {
-        // TODO: your code here.
-        unimplemented!()
+        self.keypad.get_key_kind(key).expect("key must be valid") == KeyEventKind::Pressed
     }
 
     fn consume_key_press(&mut self) -> Option<Key> {
-        // TODO: your code here.
-        unimplemented!()
+        self.keypad.consume_key_press()
     }
 
     fn get_random_word(&mut self) -> Word {
@@ -125,8 +123,67 @@ impl<R: RandomNumberGenerator> ManagedPlatform<R> {
             frame_buffer: Default::default(),
             delay_timer: 0,
             sound_timer: 0,
-            // TODO: your code here.
+            keypad: ManagedKeypad::default(),
         }
+    }
+}
+
+struct ManagedKeypad {
+    keys: [KeyEventKind; KEYPAD_SIZE],
+    last_pressed_key: Option<Key>,
+}
+
+impl Default for ManagedKeypad {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ManagedKeypad {
+    fn new() -> Self {
+        Self {
+            keys: [KeyEventKind::Released; KEYPAD_SIZE],
+            last_pressed_key: None,
+        }
+    }
+
+    fn set_key(&mut self, key: Key, event_kind: KeyEventKind) -> Result<()> {
+        if key.as_usize() >= self.keys.len() {
+            return Err(Error::InvalidKey(key.as_u8()));
+        }
+
+        match event_kind {
+            KeyEventKind::Pressed => {
+                self.keys[key.as_usize()] = KeyEventKind::Pressed;
+
+                self.last_pressed_key = Some(key);
+            }
+            KeyEventKind::Released => {
+                self.keys[key.as_usize()] = KeyEventKind::Released;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_key_kind(&self, key: Nibble) -> Result<KeyEventKind> {
+        if key.as_usize() >= self.keys.len() {
+            return Err(Error::InvalidKey(key.as_u8()));
+        }
+
+        Ok(self.keys[key.as_usize()])
+    }
+
+    fn consume_key_press(&mut self) -> Option<Nibble> {
+        if let Some(last) = self.last_pressed_key {
+            if self.keys[last.as_usize()] == KeyEventKind::Released {
+                self.last_pressed_key = None;
+
+                return Some(last);
+            }
+        }
+
+        None
     }
 }
 
@@ -134,7 +191,9 @@ impl<R: RandomNumberGenerator> ManagedPlatform<R> {
 
 pub struct ManagedInterpreter<R: RandomNumberGenerator> {
     inner: Interpreter<ManagedPlatform<R>>,
-    // TODO: your code here.
+    operation_duration: Duration,
+    delay_tick_duration: Duration,
+    sound_tick_duration: Duration,
 }
 
 impl<R: RandomNumberGenerator> ManagedInterpreter<R> {
@@ -161,7 +220,9 @@ impl<R: RandomNumberGenerator> ManagedInterpreter<R> {
     ) -> Self {
         Self {
             inner: Interpreter::new(image, ManagedPlatform::new(rand)),
-            // TODO: your code here.
+            operation_duration,
+            delay_tick_duration,
+            sound_tick_duration,
         }
     }
 
@@ -170,8 +231,28 @@ impl<R: RandomNumberGenerator> ManagedInterpreter<R> {
     }
 
     pub fn simulate_duration(&mut self, duration: Duration) -> Result<()> {
-        // TODO: your code here.
-        unimplemented!()
+        for millisecond in 0..duration.as_millis() {
+            if millisecond % self.operation_duration.as_millis() == 0 {
+                self.inner.run_next_instruction()?
+            }
+
+            if millisecond % self.delay_tick_duration.as_millis() == 0 {
+                let delay_timer_value = self
+                    .inner
+                    .platform_mut()
+                    .get_delay_timer()
+                    .saturating_sub(1);
+
+                self.inner.platform_mut().set_delay_timer(delay_timer_value);
+            }
+
+            if millisecond % self.sound_tick_duration.as_millis() == 0 {
+                let sound_timer_value = self.inner.platform_mut().sound_timer.saturating_sub(1);
+
+                self.inner.platform_mut().set_sound_timer(sound_timer_value);
+            }
+        }
+        Ok(())
     }
 
     pub fn frame_buffer(&self) -> &FrameBuffer {
@@ -179,7 +260,16 @@ impl<R: RandomNumberGenerator> ManagedInterpreter<R> {
     }
 
     pub fn set_key_down(&mut self, key: Key, is_down: bool) {
-        // TODO: your code here.
-        unimplemented!()
+        let event_kind = if is_down {
+            KeyEventKind::Pressed
+        } else {
+            KeyEventKind::Released
+        };
+
+        self.inner
+            .platform_mut()
+            .keypad
+            .set_key(key, event_kind)
+            .expect("key must be valid");
     }
 }

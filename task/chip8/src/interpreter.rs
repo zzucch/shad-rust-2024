@@ -1,5 +1,3 @@
-use core::ops::{Index, IndexMut};
-
 use crate::{
     data::{Address, Nibble, OpCode, RegisterIndex, Word},
     image::Image,
@@ -126,12 +124,20 @@ impl<P: Platform> Interpreter<P> {
             Operation::IncrementIndexRegister(register_index) => {
                 self.increment_index_register(register_index)
             }
-            Operation::ToDecimal(register_index) => self.to_decimal(register_index),
+            Operation::ToDecimal(register_index) => self.execute_to_decimal(register_index),
             Operation::WriteMemory(register_index) => self.write_memory(register_index),
             Operation::ReadMemory(register_index) => self.read_memory(register_index),
             Operation::Return => self.return_()?,
             Operation::Call(address) => self.call(address)?,
-            operation => todo!("{:?}", operation),
+            Operation::SkipIfKeyDown(register_index) => self.skip_if_key_down(register_index),
+            Operation::SkipIfKeyUp(register_index) => self.skip_if_key_up(register_index),
+            Operation::SetDelayTimer(register_index) => self.set_delay_timer(register_index),
+            Operation::SetSoundTimer(register_index) => self.set_sound_timer(register_index),
+            Operation::GetDelayTimer(register_index) => self.get_delay_timer(register_index),
+            Operation::WaitForKey(register_index) => self.wait_for_key(register_index),
+            Operation::JumpV0(address) => self.jump_v0(address),
+            Operation::SetToRandom(_, _) => todo!(),
+            Operation::SetIndexRegisterToSprite(_) => todo!(),
         }
 
         Ok(())
@@ -143,6 +149,12 @@ impl<P: Platform> Interpreter<P> {
 
     fn jump(&mut self, address: Address) {
         self.memory.instruction_pointer = address
+    }
+
+    fn jump_v0(&mut self, address: Address) {
+        let v0_value = self.registers.get(Nibble(0));
+
+        self.memory.instruction_pointer = address + v0_value.into();
     }
 
     fn set_register(&mut self, register_index: Nibble, word: u8) {
@@ -218,6 +230,7 @@ impl<P: Platform> Interpreter<P> {
             self.registers.get(register_index_first) | self.registers.get(register_index_second);
 
         self.registers.set(register_index_first, word);
+        self.set_register_f(false)
     }
 
     fn and(&mut self, register_index_first: Nibble, register_index_second: Nibble) {
@@ -225,6 +238,7 @@ impl<P: Platform> Interpreter<P> {
             self.registers.get(register_index_first) & self.registers.get(register_index_second);
 
         self.registers.set(register_index_first, word);
+        self.set_register_f(false)
     }
 
     fn xor(&mut self, register_index_first: Nibble, register_index_second: Nibble) {
@@ -232,6 +246,7 @@ impl<P: Platform> Interpreter<P> {
             self.registers.get(register_index_first) ^ self.registers.get(register_index_second);
 
         self.registers.set(register_index_first, word);
+        self.set_register_f(false)
     }
 
     fn add_register(&mut self, register_index_first: Nibble, register_index_second: Nibble) {
@@ -292,7 +307,7 @@ impl<P: Platform> Interpreter<P> {
         self.index_register += self.registers.get(register_index) as Offset
     }
 
-    fn to_decimal(&mut self, register_index: Nibble) {
+    fn execute_to_decimal(&mut self, register_index: Nibble) {
         let word = self.registers.get(register_index);
 
         let hundreds = word / 100;
@@ -337,6 +352,50 @@ impl<P: Platform> Interpreter<P> {
         self.memory.instruction_pointer = address;
 
         Ok(())
+    }
+
+    fn skip_if_key_down(&mut self, register_index: Nibble) {
+        self.platform.consume_key_press();
+
+        if self
+            .platform
+            .is_key_down(Nibble(self.registers.get(register_index)))
+        {
+            self.memory.increment_instruction_pointer()
+        }
+    }
+
+    fn skip_if_key_up(&mut self, register_index: Nibble) {
+        self.platform.consume_key_press();
+
+        if !self
+            .platform
+            .is_key_down(Nibble(self.registers.get(register_index)))
+        {
+            self.memory.increment_instruction_pointer()
+        }
+    }
+
+    fn set_delay_timer(&mut self, register_index: Nibble) {
+        self.platform
+            .set_delay_timer(self.registers.get(register_index))
+    }
+
+    fn set_sound_timer(&mut self, register_index: Nibble) {
+        self.platform
+            .set_sound_timer(self.registers.get(register_index))
+    }
+
+    fn get_delay_timer(&mut self, register_index: Nibble) {
+        self.registers
+            .set(register_index, self.platform.get_delay_timer())
+    }
+
+    fn wait_for_key(&mut self, register_index: Nibble) {
+        match self.platform.consume_key_press() {
+            Some(last_pressed_key) => self.registers.set(register_index, last_pressed_key.as_u8()),
+            None => self.memory.decrement_instruction_pointer(),
+        }
     }
 }
 
@@ -398,6 +457,10 @@ impl Memory {
 
     fn increment_instruction_pointer(&mut self) {
         self.instruction_pointer += 2
+    }
+
+    fn decrement_instruction_pointer(&mut self) {
+        self.instruction_pointer += -2
     }
 }
 
@@ -470,13 +533,13 @@ pub enum Operation {
     JumpV0(Address),
     SetToRandom(RegisterIndex, Word),
     Draw(RegisterIndex, RegisterIndex, Nibble), // Dxyn
-    SkipIfKeyDown(RegisterIndex),
-    SkipIfKeyUp(RegisterIndex),
-    GetDelayTimer(RegisterIndex),
-    WaitForKey(RegisterIndex),
-    SetDelayTimer(RegisterIndex),
-    SetSoundTimer(RegisterIndex),
-    IncrementIndexRegister(RegisterIndex), // Fx1E
+    SkipIfKeyDown(RegisterIndex),               // Ex9E
+    SkipIfKeyUp(RegisterIndex),                 // ExA1
+    GetDelayTimer(RegisterIndex),               // Fx07
+    WaitForKey(RegisterIndex),                  // Fx0A
+    SetDelayTimer(RegisterIndex),               // Fx15
+    SetSoundTimer(RegisterIndex),               // Fx18
+    IncrementIndexRegister(RegisterIndex),      // Fx1E
     SetIndexRegisterToSprite(Nibble),
     ToDecimal(RegisterIndex), // Fx33
     WriteMemory(Nibble),      // Fx55
@@ -524,12 +587,22 @@ impl TryFrom<OpCode> for Operation {
                     op_code.extract_nibble(2),
                 ),
                 0xa => Self::SetIndexRegister(op_code.extract_address()),
+                0xb => Self::JumpV0(op_code.extract_address()),
                 0xd => Self::Draw(
                     op_code.extract_nibble(1),
                     op_code.extract_nibble(2),
                     op_code.extract_nibble(3),
                 ),
+                0xe => match op_code.extract_word(1) {
+                    0x9e => Self::SkipIfKeyDown(op_code.extract_nibble(1)),
+                    0xa1 => Self::SkipIfKeyUp(op_code.extract_nibble(1)),
+                    _ => return unknown_op_code_error,
+                },
                 0xf => match op_code.extract_word(1) {
+                    0x07 => Self::GetDelayTimer(op_code.extract_nibble(1)),
+                    0x0a => Self::WaitForKey(op_code.extract_nibble(1)),
+                    0x15 => Self::SetDelayTimer(op_code.extract_nibble(1)),
+                    0x18 => Self::SetSoundTimer(op_code.extract_nibble(1)),
                     0x1e => Self::IncrementIndexRegister(op_code.extract_nibble(1)),
                     0x33 => Self::ToDecimal(op_code.extract_nibble(1)),
                     0x55 => Self::WriteMemory(op_code.extract_nibble(1)),
