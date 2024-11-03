@@ -78,6 +78,7 @@ impl<P: Platform> Interpreter<P> {
             Operation::SetRegister(register_index, word) => self.set_register(register_index, word),
             Operation::SetIndexRegister(address) => self.index_register = address,
             Operation::Draw(x, y, n) => self.draw(x, y, n),
+            Operation::AddValue(register_index, word) => self.add_value(register_index, word),
             _ => todo!(),
         }
 
@@ -94,6 +95,11 @@ impl<P: Platform> Interpreter<P> {
 
     fn set_register(&mut self, register_index: Nibble, word: u8) {
         self.registers.set(register_index, word)
+    }
+
+    fn add_value(&mut self, register_index: Nibble, word: u8) {
+        self.registers
+            .set(register_index, self.registers.get(register_index) + word)
     }
 
     fn draw(&mut self, x: Nibble, y: Nibble, n: Nibble) {
@@ -183,7 +189,7 @@ pub enum Operation {
     SkipIfNotEqual(RegisterIndex, Word),
     SkipIfRegistersEqual(RegisterIndex, RegisterIndex),
     SetRegister(RegisterIndex, Word), // 6xnn
-    AddValue(RegisterIndex, Word),
+    AddValue(RegisterIndex, Word),    // 7xnn
     SetToRegister(RegisterIndex, RegisterIndex),
     Or(RegisterIndex, RegisterIndex),
     And(RegisterIndex, RegisterIndex),
@@ -222,6 +228,7 @@ impl TryFrom<OpCode> for Operation {
             _ => match code.extract_nibble(0).as_u8() {
                 0x1 => Operation::Jump(code.extract_address()),
                 0x6 => Operation::SetRegister(code.extract_nibble(1), code.extract_word(1)),
+                0x7 => Operation::AddValue(code.extract_nibble(1), code.extract_word(1)),
                 0xa => Self::SetIndexRegister(code.extract_address()),
                 0xd => Self::Draw(
                     code.extract_nibble(1),
