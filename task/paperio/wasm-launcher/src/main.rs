@@ -21,7 +21,9 @@ pub fn main() -> Result<()> {
     let stdin = TcpStream::connect(&address).with_context(|| format!("failed to {address}"))?;
     let stdout = stdin.try_clone().context("failed to clone tcp stream")?;
 
-    let status = WasmStrategyRunner::new(&args.path, stdin, stdout)
+    let status = WasmStrategyRunner::new(args.path)
+        .stdin(stdin)
+        .stdout(stdout)
         .run()
         .context("failed to run strategy")?;
 

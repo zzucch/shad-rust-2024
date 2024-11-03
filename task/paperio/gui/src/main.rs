@@ -1,21 +1,12 @@
-mod app;
-mod colors;
-mod state;
-
 use std::{
-    io::{BufReader, BufWriter, Write},
+    future::Future,
+    io::{BufReader, BufWriter},
     net::TcpStream,
-    sync::mpsc,
     thread,
-    time::Duration,
 };
 
-use app::{AtomicDirection, PaperioApp};
 use clap::Parser;
-use paperio_proto::{
-    traits::{JsonRead, JsonWrite},
-    Command, Direction, Message,
-};
+use paperio_gui::app::PaperioApp;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -33,74 +24,36 @@ struct Arguments {
 fn main() {
     let args = Arguments::parse();
 
+    stderrlog::new()
+        .verbosity(log::Level::Debug)
+        .module(module_path!())
+        .init()
+        .expect("failed to initialize stderr logger");
+
     let stream = TcpStream::connect(format!("{}:{}", args.address, args.port))
         .expect("failed to connect to tcp socket");
-    let (msg_to_gui, msg_receiver) = mpsc::channel();
-    let atomic_direction_store = AtomicDirection::new(Direction::Left);
-
-    // thread for sending and receiving messages
-    let handle = spawn_cmd_thread(
-        stream,
-        msg_to_gui,
-        atomic_direction_store.clone(),
-        args.tick_delay_ms,
-        args.spectator,
-    );
+    let stream_clone = stream.try_clone().expect("failed to clone tcp stream");
 
     // run gui in current thread
     let native_options = eframe::NativeOptions {
         window_builder: Some(Box::new(|b| b.with_inner_size((1200., 980.)))),
         ..Default::default()
     };
-    eframe::run_native(
-        "paperio",
-        native_options,
-        Box::new(|cc| {
-            Ok(Box::new(PaperioApp::new(
-                cc,
-                msg_receiver,
-                atomic_direction_store,
-            )))
-        }),
-    )
-    .unwrap();
-
-    let _ = handle.join();
-}
-
-fn spawn_cmd_thread(
-    stream: TcpStream,
-    msg_to_gui: mpsc::Sender<Message>,
-    atomic_direction_store: AtomicDirection,
-    tick_delay_ms: u64,
-    is_spectator: bool,
-) -> thread::JoinHandle<anyhow::Result<()>> {
-    thread::spawn(move || -> anyhow::Result<()> {
-        let mut reader = BufReader::new(stream.try_clone()?);
-        let mut writer = BufWriter::new(stream);
-
-        // receive `GameParams` msg
-        if let Ok(msg) = reader.read_message() {
-            msg_to_gui.send(msg)?;
-        } else {
-            panic!("Could not read first message")
-        };
-
-        // receive tick msgs
-        while let Ok(msg) = reader.read_message() {
-            msg_to_gui.send(msg)?;
-
-            thread::sleep(Duration::from_millis(tick_delay_ms));
-
-            let command = if !is_spectator {
-                Command::ChangeDirection(atomic_direction_store.load())
-            } else {
-                Command::NoOp
-            };
-
-            writer.write_command(&command)?;
-            writer.flush()?;
+    let app = PaperioApp::new(args.tick_delay_ms, args.spectator);
+    let reader = BufReader::new(stream);
+    let writer = BufWriter::new(stream_clone);
+    let mut backend_future = Box::pin(app.run_backend(reader, writer));
+    let handle = thread::spawn(move || {
+        let waker = futures::task::noop_waker();
+        let mut ctx = futures::task::Context::from_waker(&waker);
+        match backend_future.as_mut().poll(&mut ctx) {
+            std::task::Poll::Ready(result) => {
+                log::info!("result: {result:?}");
+                result
+            }
+            std::task::Poll::Pending => unreachable!(),
         }
-        Ok(())
-    })
+    });
+    eframe::run_native("paperio", native_options, Box::new(|_| Ok(Box::new(app)))).unwrap();
+    handle.join().unwrap().unwrap();
 }

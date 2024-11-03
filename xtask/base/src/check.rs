@@ -1,14 +1,20 @@
-use crate::checker_config::{read_checker_config, BuildConfig, LintConfig, TestConfig};
+use crate::{
+    checker_config::{read_checker_config, BuildConfig, LintConfig, TestConfig},
+    util::create_shell,
+};
 
 use anyhow::{bail, ensure, Context, Result};
 use clap::Parser;
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
-use xshell::{cmd, Shell};
+use walkdir::WalkDir;
+use xshell::cmd;
 use xtask_util::canonicalize;
 
 use std::{
     collections::HashSet,
-    env, fs,
+    env,
+    ffi::OsStr,
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -25,12 +31,6 @@ fn make_package_args(package: &Option<String>) -> Vec<&str> {
         Some(package) => vec!["--package", package],
         None => vec![],
     }
-}
-
-fn create_shell(path: &Path) -> Result<Shell> {
-    let sh = Shell::new().context("failed to create shell")?;
-    sh.change_dir(path);
-    Ok(sh)
 }
 
 fn find_forbidden_ident(
@@ -62,14 +62,22 @@ fn ensure_no_forbidden_idents(
     forbidden_idents: &HashSet<Ident>,
 ) -> Result<()> {
     for entry in allowlist {
-        let path = task_path.join(entry);
-        let source =
-            fs::read_to_string(&path).with_context(|| format!("failed to read {path:?}"))?;
-        let Ok(token_stream) = TokenStream::from_str(&source) else {
-            bail!("file contains invalid Rust source: {path:?}");
-        };
-        if let Some(ident) = find_forbidden_ident(token_stream, forbidden_idents) {
-            bail!("found forbidden identifier \"{ident}\" in file {path:?}");
+        for mb_subentry in WalkDir::new(task_path.join(entry)) {
+            let subentry = mb_subentry.with_context(|| format!("failed to traverse {entry:?}"))?;
+
+            let path = subentry.path();
+            if path.extension() != Some(OsStr::new("rs")) {
+                continue;
+            }
+
+            let source =
+                fs::read_to_string(path).with_context(|| format!("failed to read {path:?}"))?;
+            let Ok(token_stream) = TokenStream::from_str(&source) else {
+                bail!("file contains invalid Rust source: {path:?}");
+            };
+            if let Some(ident) = find_forbidden_ident(token_stream, forbidden_idents) {
+                bail!("found forbidden identifier \"{ident}\" in file {path:?}");
+            }
         }
     }
     Ok(())

@@ -1,3 +1,5 @@
+use std::io;
+
 use log::*;
 use paperio_proto::{Command, Message};
 
@@ -7,9 +9,15 @@ use crate::{
     player_vec::PlayerIndexedVector,
 };
 
+pub struct PlayerResult {
+    pub score: u32,
+    pub io_error: Option<io::Error>,
+}
+
 pub struct Server<'a> {
     player_endpoints: PlayerIndexedVector<Box<dyn Endpoint + 'a>>,
     spectator_endpoints: Vec<Box<dyn Endpoint + 'a>>,
+    player_io_errors: PlayerIndexedVector<Option<io::Error>>,
 }
 
 impl<'a> Server<'a> {
@@ -17,16 +25,18 @@ impl<'a> Server<'a> {
         player_endpoints: PlayerIndexedVector<impl Endpoint + 'a>,
         spectator_endpoints: impl IntoIterator<Item = impl Endpoint + 'a>,
     ) -> Self {
+        let player_count = player_endpoints.len();
         Self {
             player_endpoints: player_endpoints.mapped(|e| Box::new(e) as Box<dyn Endpoint>),
             spectator_endpoints: spectator_endpoints
                 .into_iter()
                 .map(|e| Box::new(e) as Box<dyn Endpoint>)
                 .collect(),
+            player_io_errors: PlayerIndexedVector::new(player_count),
         }
     }
 
-    pub fn run(&mut self, ticks_amount: usize) -> PlayerIndexedVector<u32> {
+    pub fn run(mut self, ticks_amount: usize) -> PlayerIndexedVector<PlayerResult> {
         let mut game = Game::new(self.player_endpoints.len());
         let params = game.get_game_params();
 
@@ -64,6 +74,11 @@ impl<'a> Server<'a> {
         }
 
         game.get_player_scores()
+            .into_iter()
+            .zip(self.player_io_errors)
+            .map(|(score, io_error)| PlayerResult { score, io_error })
+            .collect::<Vec<_>>()
+            .into()
     }
 
     fn send_to_spectators(&mut self, message: &Message) {
@@ -75,9 +90,13 @@ impl<'a> Server<'a> {
     }
 
     fn send_to_player(&mut self, player_id: PlayerId, message: &Message) {
+        if self.player_io_errors[player_id].is_some() {
+            return;
+        }
         let endpoint = &mut self.player_endpoints[player_id];
         if let Err(err) = endpoint.send_message(message) {
             error!("failed to send message to Player #{player_id}: {err}");
+            self.player_io_errors[player_id] = Some(err);
         }
     }
 
@@ -93,11 +112,15 @@ impl<'a> Server<'a> {
     }
 
     fn try_get_player_command(&mut self, player_id: PlayerId) -> Option<Command> {
+        if self.player_io_errors[player_id].is_some() {
+            return None;
+        }
         let endpoint = &mut self.player_endpoints[player_id];
         match endpoint.get_command() {
             Ok(cmd) => Some(cmd),
             Err(err) => {
                 error!("failed to get command from Player #{player_id}: {err}");
+                self.player_io_errors[player_id] = Some(err);
                 None
             }
         }

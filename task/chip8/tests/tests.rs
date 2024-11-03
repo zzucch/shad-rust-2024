@@ -219,7 +219,7 @@ fn test_quirks() {
     inter.set_key_down(Nibble::try_from(1).unwrap(), true);
     inter.simulate_duration(Duration::from_secs(1)).unwrap();
     inter.set_key_down(Nibble::try_from(1).unwrap(), false);
-    inter.simulate_duration(Duration::from_secs(5)).unwrap();
+    inter.simulate_duration(Duration::from_secs(6)).unwrap();
 
     check_display(
         inter.frame_buffer(),
