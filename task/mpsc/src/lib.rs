@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
 
-use std::{cell::RefCell, collections::VecDeque, fmt::Debug, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    fmt::Debug,
+    rc::{Rc, Weak},
+};
 
 use thiserror::Error;
 
@@ -12,31 +17,42 @@ pub struct SendError<T: Debug> {
     pub value: T,
 }
 
+pub type Buffer<T> = RefCell<VecDeque<T>>;
+
 pub struct Sender<T> {
-    // TODO: your code here.
+    buffer: Weak<Buffer<T>>,
 }
 
 impl<T: Debug> Sender<T> {
+    pub fn new(buffer: Weak<RefCell<VecDeque<T>>>) -> Self {
+        Self { buffer }
+    }
+
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        // TODO: your code here.
-        unimplemented!()
+        if let Some(rc) = self.buffer.upgrade() {
+            rc.as_ref().borrow_mut().push_back(value);
+            drop(rc);
+
+            Ok(())
+        } else {
+            Err(SendError { value })
+        }
     }
 
     pub fn is_closed(&self) -> bool {
-        // TODO: your code here.
-        unimplemented!()
+        self.buffer.upgrade().is_none()
     }
 
     pub fn same_channel(&self, other: &Self) -> bool {
-        // TODO: your code here.
-        unimplemented!()
+        self.buffer.ptr_eq(&other.buffer)
     }
 }
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
-        // TODO: your code here.
-        unimplemented!()
+        Self {
+            buffer: self.buffer.clone(),
+        }
     }
 }
 
@@ -51,31 +67,51 @@ pub enum ReceiveError {
 }
 
 pub struct Receiver<T> {
-    // TODO: your code here.
+    buffer: Rc<Buffer<T>>,
+    is_closed: bool,
 }
 
 impl<T> Receiver<T> {
+    pub fn new(buffer: Rc<RefCell<VecDeque<T>>>) -> Self {
+        Self {
+            buffer,
+            is_closed: false,
+        }
+    }
+
     pub fn recv(&mut self) -> Result<T, ReceiveError> {
-        // TODO: your code here.
-        unimplemented!()
+        if let Some(element) = self.buffer.as_ref().borrow_mut().pop_front() {
+            return Ok(element);
+        }
+
+        if Rc::<RefCell<VecDeque<T>>>::weak_count(&self.buffer) == 0 {
+            self.close();
+        }
+
+        if self.is_closed {
+            return Err(ReceiveError::Closed);
+        }
+
+        Err(ReceiveError::Empty)
     }
 
     pub fn close(&mut self) {
-        // TODO: your code here.
-        unimplemented!()
+        self.is_closed = true;
+        self.buffer = RefCell::from(self.buffer.take()).into();
     }
 }
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        // TODO: your code here.
-        unimplemented!()
+        self.close();
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
-    // TODO: your code here.
-    unimplemented!()
+pub fn channel<T: std::fmt::Debug>() -> (Sender<T>, Receiver<T>) {
+    let buffer = Rc::new(RefCell::new(VecDeque::<T>::default()));
+    let weak = Rc::downgrade(&buffer);
+
+    (Sender::new(weak), Receiver::new(buffer))
 }
