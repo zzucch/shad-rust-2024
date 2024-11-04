@@ -4,9 +4,11 @@ use std::{
     any::Any,
     io::{Read, Write},
     net::TcpStream,
-    os::unix::net::UnixStream,
     path::PathBuf,
 };
+
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 
 use wasi_common::{
     file::WasiFile,
@@ -26,6 +28,7 @@ impl IntoWasiFile for TcpStream {
     }
 }
 
+#[cfg(unix)]
 impl IntoWasiFile for UnixStream {
     fn into_wasi_file(self) -> impl WasiFile {
         wasmtime_wasi::net::UnixStream::from_cap_std(cap_std::os::unix::net::UnixStream::from_std(
