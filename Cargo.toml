@@ -12,6 +12,8 @@ members = [
     "task/gc/gc-derive",
     "task/ini",
     "task/mpsc",
+    "task/orm",
+    "task/orm/orm-derive",
     "task/paperio/gui",
     "task/paperio/proto",
     "task/paperio/server",
