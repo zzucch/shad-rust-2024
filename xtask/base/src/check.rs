@@ -24,6 +24,14 @@ use std::{
 #[derive(Parser, Clone, Debug)]
 pub struct CheckArgs {
     pub task_path: Vec<PathBuf>,
+
+    #[clap(long, action)]
+    /// Disable default features in Cargo.
+    pub no_default_features: bool,
+
+    #[clap(long)]
+    /// Enable Cargo features.
+    pub features: Option<String>,
 }
 
 fn make_package_args(package: &Option<String>) -> Vec<&str> {
@@ -83,7 +91,12 @@ fn ensure_no_forbidden_idents(
     Ok(())
 }
 
-fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Result<()> {
+fn run_lints(
+    task_path: &Path,
+    cargo_args: &[String],
+    config: &LintConfig,
+    allowlist: &[PathBuf],
+) -> Result<()> {
     let sh = create_shell(task_path)?;
 
     let package_args = &make_package_args(&config.package);
@@ -105,7 +118,7 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
 
         cmd!(
             sh,
-            "cargo clippy {package_args...} -- --deny warnings {args...}"
+            "cargo clippy {package_args...} {cargo_args...} -- --deny warnings {args...}"
         )
         .run()?;
     }
@@ -121,33 +134,37 @@ fn run_lints(task_path: &Path, config: &LintConfig, allowlist: &[PathBuf]) -> Re
     ensure_no_forbidden_idents(task_path, allowlist, &forbidden_idents)
 }
 
-fn run_build(task_path: &Path, config: &BuildConfig) -> Result<()> {
+fn run_build(task_path: &Path, cargo_args: &[String], config: &BuildConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
     let package_args = &make_package_args(&config.package);
 
     if config.debug {
-        cmd!(sh, "cargo build {package_args...}").run()?;
+        cmd!(sh, "cargo build {package_args...} {cargo_args...}").run()?;
     }
 
     if config.release {
-        cmd!(sh, "cargo build {package_args...} --release").run()?;
+        cmd!(
+            sh,
+            "cargo build {package_args...} {cargo_args...} --release"
+        )
+        .run()?;
     }
 
     Ok(())
 }
 
-fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
+fn run_tests(task_path: &Path, cargo_args: &[String], config: &TestConfig) -> Result<()> {
     let sh = create_shell(task_path)?;
 
     let package_args = &make_package_args(&config.package);
 
     if config.debug {
-        cmd!(sh, "cargo test {package_args...}").run()?;
+        cmd!(sh, "cargo test {package_args...} {cargo_args...}").run()?;
     }
 
     if config.release {
-        cmd!(sh, "cargo test {package_args...} --release").run()?;
+        cmd!(sh, "cargo test {package_args...} {cargo_args...} --release").run()?;
     }
 
     for hook in &config.custom_hooks {
@@ -161,17 +178,30 @@ fn run_tests(task_path: &Path, config: &TestConfig) -> Result<()> {
     Ok(())
 }
 
-fn check_task(path: &Path) -> Result<()> {
+fn check_task(path: &Path, cargo_args: &[String]) -> Result<()> {
     let config = read_checker_config(path).context("failed to read config")?;
 
-    run_lints(path, &config.lint, &config.grade.allowlist)?;
-    run_build(path, &config.build)?;
-    run_tests(path, &config.test)?;
+    run_lints(path, cargo_args, &config.lint, &config.grade.allowlist)?;
+    run_build(path, cargo_args, &config.build)?;
+    run_tests(path, cargo_args, &config.test)?;
 
     Ok(())
 }
 
+fn collect_cargo_args(args: &CheckArgs) -> Vec<String> {
+    let mut cargo_args = vec![];
+    if args.no_default_features {
+        cargo_args.push("--no-default-features");
+    }
+    if let Some(features) = &args.features {
+        cargo_args.extend(["--features", features]);
+    }
+    cargo_args.into_iter().map(|s| s.to_string()).collect()
+}
+
 pub fn check(args: CheckArgs) -> Result<()> {
+    let cargo_args = collect_cargo_args(&args);
+
     let task_paths = if args.task_path.is_empty() {
         vec![env::current_dir().context("failed to get cwd")?]
     } else {
@@ -188,7 +218,7 @@ pub fn check(args: CheckArgs) -> Result<()> {
             .with_context(|| format!("invalid task path: {task_path:?}"))?;
 
         eprintln!("Checking task \"{task_name}\" at {task_path:?}");
-        check_task(&task_path)?;
+        check_task(&task_path, &cargo_args)?;
     }
 
     eprintln!("OK!");
