@@ -22,6 +22,9 @@ const STUDENT_REMOTE_NAME: &str = "student";
 pub struct SubmitArgs {
     pub task_path: Option<PathBuf>,
 
+    #[arg(short, long)]
+    pub subtask: Option<String>,
+
     #[arg(short, long, action)]
     pub verbose: bool,
 }
@@ -90,6 +93,14 @@ fn push_task(path: &Path, branch: &str, verbose: bool) -> Result<()> {
     Ok(())
 }
 
+fn get_submit_branch(task_name: &str, subtask: &Option<String>) -> String {
+    if let Some(subtask) = subtask {
+        format!("submit/{task_name}/{subtask}")
+    } else {
+        format!("submit/{task_name}")
+    }
+}
+
 pub fn submit(args: SubmitArgs) -> Result<()> {
     let task_path = canonicalize(
         args.task_path
@@ -123,10 +134,11 @@ pub fn submit(args: SubmitArgs) -> Result<()> {
     );
 
     let student_login = get_student_login(&repo, STUDENT_REMOTE_NAME)?;
+    let submit_branch = get_submit_branch(&task_name, &args.subtask);
 
     eprintln!("Submitting \"{task_name}\" ...");
     push_task(&task_path, "main", args.verbose)?;
-    push_task(&task_path, &format!("submit/{task_name}"), args.verbose)?;
+    push_task(&task_path, &submit_branch, args.verbose)?;
 
     eprintln!("OK: task is successfully submitted.");
     eprintln!("-> {STUDENT_GROUP_URL}/{student_login}/pipelines");
